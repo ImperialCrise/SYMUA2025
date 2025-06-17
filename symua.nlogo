@@ -42,7 +42,7 @@ end
 
 to load-map
   ;; charge le fichier ASCII du fichier python
-  file-open user-file
+  file-open "park_ascii.txt"
   let lines []
   while [not file-at-end?] [
     set lines lput file-read-line lines
