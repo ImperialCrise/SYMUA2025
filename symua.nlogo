@@ -1,6 +1,7 @@
 extensions [table]
 
 breed [people person]
+breed [attractions attraction]
 
 people-own [
   age
@@ -16,6 +17,15 @@ people-own [
   duree-attraction
 ]
 
+attractions-own [
+  popularite
+  capacite-attraction
+  visiteurs-dans
+  visiteurs-en-queue
+  temps-moyen-restant
+  taux-occupation
+]
+
 patches-own [
   type-patch
   id-attraction
@@ -26,7 +36,7 @@ globals [
   exit-patches
   nb-total-entres
   nb-total-sortis
-
+  afficher-labels?
 ]
 
 
@@ -34,6 +44,7 @@ to setup
   clear-all
   set nb-total-entres 0
   set nb-total-sortis 0
+  set afficher-labels? false
   if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
   if not is-number? capacite-queue [ set capacite-queue 10 ]
   if not is-number? seed-random [ set seed-random 0 ]
@@ -60,7 +71,7 @@ to load-map
   if H = 0 [ user-message "Map file is empty." stop ]
   let W length (item 0 lines)
   resize-world 0 (W - 1) 0 (H - 1)
-  set-patch-size 5
+  set-patch-size 8
   clear-patches
 
   let temp-queues []
@@ -75,11 +86,22 @@ to load-map
         [ifelse c = "A" [
             set type-patch "attraction"
             set id-attraction (word "attr-" x "-" y)
-            set pcolor red
+            set pcolor gray
+            sprout-attractions 1 [
+              set popularite random-float 10.0
+              set capacite-attraction 20 + random 30
+              set visiteurs-dans []
+              set visiteurs-en-queue 0
+              set temps-moyen-restant 0
+              set taux-occupation 0
+              set shape "house"
+              set color red
+              set size 1.5
+            ]
           ]
         [ifelse c = "#" [
             set type-patch "queue"
-            set pcolor yellow
+            set pcolor white - 2
             set temp-queues lput self temp-queues
           ]
         [ifelse c = "X" [
@@ -264,7 +286,13 @@ to go
         set destination nobody
       ]
     ]
+    ]
+  
+  mettre-a-jour-stats-attractions
+  if afficher-labels? [
+    afficher-labels-attractions
   ]
+
   tick
 end
 
@@ -276,19 +304,69 @@ to-report nb-en-parcours
   report count people with [not dans-file?]
 end
 
+to-report nb-en-queue
+  report count people with [destination != nobody and [type-patch] of destination = "queue" and not dans-file?]
+end
+
 
 to-report string-to-chars [s]
   report map [i -> substring s i (i + 1)] (range (length s))
+end
+
+to mettre-a-jour-stats-attractions
+  ask attractions [
+    let patch-attraction patch-here
+    let visiteurs-dans-attraction count people with [current-attraction = patch-attraction and dans-file?]
+        set visiteurs-dans visiteurs-dans-attraction
+    
+    let attraction-id [id-attraction] of patch-here
+    let queues-attraction patches with [type-patch = "queue" and id-attraction = attraction-id]
+        set visiteurs-en-queue sum [count people-here] of queues-attraction
+    
+        set taux-occupation (visiteurs-dans / capacite-attraction) * 100
+    
+    if visiteurs-dans > 0 [
+      let temps-total 0
+      ask people with [current-attraction = patch-attraction and dans-file?] [
+        set temps-total temps-total + (duree-attraction - temps-attente)
+      ]
+      set temps-moyen-restant temps-total / visiteurs-dans
+    ]
+  ]
+end
+
+to afficher-labels-attractions
+  ask attractions [
+    if afficher-labels? [
+      let info-label (word
+        "Pop: " (precision popularite 1) "\n"
+        "Occ: " visiteurs-dans "/" capacite-attraction " (" (precision taux-occupation 0) "%)\n"
+        "Queue: " visiteurs-en-queue "\n"
+        "Temps: " (precision temps-moyen-restant 1)
+      )
+      set label info-label
+      set label-color white
+    ]
+  ]
+
+  if not afficher-labels? [
+    ask attractions [set label ""]
+  ]
+end
+
+to toggle-labels
+  set afficher-labels? not afficher-labels?
+  afficher-labels-attractions
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
 195
 54
-602
-301
+843
+447
 -1
 -1
-5.0
+8.0
 1
 10
 1
@@ -359,6 +437,23 @@ NIL
 NIL
 1
 
+BUTTON
+277
+8
+360
+41
+labels on/off
+toggle-labels
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
 SLIDER
 5
 117
@@ -390,9 +485,9 @@ NIL
 HORIZONTAL
 
 MONITOR
-611
+828
 54
-727
+944
 99
 NIL
 nb-dans-attractions
@@ -401,9 +496,9 @@ nb-dans-attractions
 11
 
 MONITOR
-611
+828
 99
-716
+933
 144
 NIL
 nb-en-parcours
@@ -427,9 +522,9 @@ NIL
 HORIZONTAL
 
 MONITOR
-610
+827
 144
-715
+932
 189
 NIL
 nb-total-entres
@@ -438,9 +533,9 @@ nb-total-entres
 11
 
 MONITOR
-610
+827
 233
-716
+933
 278
 NIL
 nb-total-sortis
@@ -449,12 +544,23 @@ nb-total-sortis
 11
 
 MONITOR
-610
+827
 189
-715
+932
 234
 NIL
 count people
+17
+1
+11
+
+MONITOR
+827
+278
+932
+323
+NIL
+nb-en-queue
 17
 1
 11
@@ -490,10 +596,10 @@ NIL
 HORIZONTAL
 
 PLOT
-216
-310
-676
-494
+197
+443
+657
+627
 People's states
 NIL
 NIL
@@ -507,6 +613,7 @@ true
 PENS
 "dans attractions" 1.0 0 -2674135 true "" "plot nb-dans-attractions"
 "en parcours" 1.0 0 -13840069 true "" "plot nb-en-parcours"
+"en queue" 1.0 0 -955883 true "" "plot nb-en-queue"
 
 @#$#@#$#@
 ## WHAT IS IT?
