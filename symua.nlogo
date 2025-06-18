@@ -60,7 +60,7 @@ to load-map
   if H = 0 [ user-message "Map file is empty." stop ]
   let W length (item 0 lines)
   resize-world 0 (W - 1) 0 (H - 1)
-  set-patch-size 10
+  set-patch-size 5
   clear-patches
 
   let temp-queues []
@@ -282,13 +282,13 @@ to-report string-to-chars [s]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-226
-51
-1034
-540
+195
+54
+602
+301
 -1
 -1
-10.0
+5.0
 1
 10
 1
@@ -309,10 +309,10 @@ ticks
 30.0
 
 BUTTON
-27
-36
-93
-69
+5
+7
+71
+40
 setup
 setup
 NIL
@@ -326,10 +326,10 @@ NIL
 1
 
 BUTTON
-109
-39
-172
-72
+211
+8
+274
+41
 go
 go
 T
@@ -343,10 +343,10 @@ NIL
 1
 
 BUTTON
-45
-116
-176
-149
+74
+8
+205
+41
 spawn-people
 spawn-people
 NIL
@@ -360,25 +360,25 @@ NIL
 1
 
 SLIDER
-30
-166
-202
-199
+5
+117
+177
+150
 nb-visiteurs
 nb-visiteurs
 1
 500
-204.0
+50.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-22
-217
-194
-250
+5
+182
+177
+215
 seed-random
 seed-random
 0
@@ -390,10 +390,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-9
-313
-149
-358
+611
+54
+727
+99
 NIL
 nb-dans-attractions
 17
@@ -401,10 +401,10 @@ nb-dans-attractions
 11
 
 MONITOR
-14
-375
-128
-420
+611
+99
+716
+144
 NIL
 nb-en-parcours
 17
@@ -412,10 +412,10 @@ nb-en-parcours
 11
 
 SLIDER
-29
-265
-201
-298
+6
+150
+178
+183
 max-attente
 max-attente
 10
@@ -427,10 +427,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-18
-444
-128
-489
+610
+144
+715
+189
 NIL
 nb-total-entres
 17
@@ -438,10 +438,10 @@ nb-total-entres
 11
 
 MONITOR
-135
-444
-241
-489
+610
+233
+716
+278
 NIL
 nb-total-sortis
 17
@@ -449,10 +449,10 @@ nb-total-sortis
 11
 
 MONITOR
-23
-500
-128
-545
+610
+189
+715
+234
 NIL
 count people
 17
@@ -460,34 +460,53 @@ count people
 11
 
 SLIDER
-44
-98
-216
-131
+5
+49
+177
+82
 vitesse
 vitesse
 0.1
 10
-9.1
-1
+5.0
+0.1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-181
-342
-353
-375
+5
+83
+177
+116
 capacite-queue
 capacite-queue
 1
 10
-10.0
+4.0
 1
 1
 NIL
 HORIZONTAL
+
+PLOT
+216
+310
+676
+494
+People's states
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"dans attractions" 1.0 0 -2674135 true "" "plot nb-dans-attractions"
+"en parcours" 1.0 0 -13840069 true "" "plot nb-en-parcours"
 
 @#$#@#$#@
 ## WHAT IS IT?
