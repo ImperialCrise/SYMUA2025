@@ -164,11 +164,11 @@ to avancer-case [cible]
         die
       ] [
         ;; If objective is "attraction" and it's a queue
-        if objectif = "attraction" and [type-patch] of cible = "queue" and count turtles-here < capacite-queue [
+        ifelse objectif = "attraction" and [type-patch] of cible = "queue" and count turtles-here < capacite-queue [
           set dans-file? true
           set temps-attente 0
           move-to cible
-        ] else [
+        ] [
           ;; Could not enter queue (e.g. full, or not a queue), or reached a non-exit target patch
           ;; or reached an exit patch but objective was not "sortie" (should not happen with current decider-objectif)
           set destination nobody ;; This will trigger decider-objectif in the next tick
