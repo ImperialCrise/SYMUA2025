@@ -5,19 +5,19 @@ breed [people person]
 people-own [
   age
   en-famille
-  preferred-genre       ;; "sensation" "famille" "calme"
+  preferred-genre
   current-attraction
   path
   satisfaction
   is-leaving
-  destination      ;; la queue ciblé
-  dans-file?       ;; boolean
+  destination
+  dans-file?
   temps-attente
   duree-attraction
 ]
 
 patches-own [
-  type-patch       ;; "chemin" "entree" "queue" "attraction" "vide" "exit"
+  type-patch
   id-attraction
 ]
 
@@ -26,11 +26,7 @@ globals [
   exit-patches
   nb-total-entres
   nb-total-sortis
-  ;; ces entrees doivent rester commentées sinon il y a une erreur au check
-  ;;nb-visiteurs      ;; Doit être un slider dans l'interface
-  ;;capacite-queue    ;; Doit être un slider dans l'interface
-  ;;seed-random       ;; Doit être un un slider dans l'interface
-  ;;vitesse           ;; Doit être un slider dans l'interface
+
 ]
 
 
@@ -38,7 +34,6 @@ to setup
   clear-all
   set nb-total-entres 0
   set nb-total-sortis 0
-  ;; Valeurs par défaut si les sliders ne sont pas créés
   if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
   if not is-number? capacite-queue [ set capacite-queue 10 ]
   if not is-number? seed-random [ set seed-random 0 ]
@@ -49,8 +44,6 @@ to setup
 end
 
 to load-map
-  ;; This procedure assumes a file named "park_ascii.txt" exists in the
-  ;; same directory as the model file.
   if not file-exists? "park_ascii.txt" [
     user-message "Could not find the map file: park_ascii.txt"
     stop
@@ -70,10 +63,8 @@ to load-map
   set-patch-size 10
   clear-patches
 
-  ;; Create a temporary list of queue patches to process later
   let temp-queues []
 
-  ;; First pass: Set basic patch types and colors
   let y H - 1
   foreach lines [ line ->
     let x 0
@@ -83,13 +74,13 @@ to load-map
         [ifelse c = "E" [ set type-patch "entree" set pcolor green ]
         [ifelse c = "A" [
             set type-patch "attraction"
-            set id-attraction (word "attr-" x "-" y) ;; Give unique ID
+            set id-attraction (word "attr-" x "-" y)
             set pcolor red
           ]
         [ifelse c = "#" [
             set type-patch "queue"
             set pcolor yellow
-            set temp-queues lput self temp-queues ;; Add this patch to the list
+            set temp-queues lput self temp-queues
           ]
         [ifelse c = "X" [
             set type-patch "exit"
@@ -105,7 +96,6 @@ to load-map
     set y y - 1
   ]
 
-  ;; Second pass: Link queues to their adjacent attractions
   foreach temp-queues [ q ->
     ask q [
       let adjacent-attraction one-of neighbors4 with [ type-patch = "attraction" ]
@@ -115,7 +105,6 @@ to load-map
     ]
   ]
 
-  ;; Populate global agentsets
   set entree-patches patches with [type-patch = "entree"]
   set exit-patches patches with [type-patch = "exit"]
 end
@@ -150,7 +139,6 @@ end
 
 
 to choose-new-destination
-  ;; People who are not leaving look for an attraction
   if not is-leaving [
     let potential-attractions patches with [
       type-patch = "attraction" and
@@ -173,65 +161,51 @@ to choose-new-destination
     ]
   ]
 
-  ;; If no destination was found (either no attractions or person is leaving)
   if destination = nobody [
-    set is-leaving true ;; Now the person will try to exit
+    set is-leaving true
     if any? exit-patches [
       set destination one-of exit-patches
     ]
   ]
 end
 
-;; **FIXED**: BFS Pathfinding implementation using local variables/tables with **valid keys**
 to-report find-path [target-patch]
-  ;; Reports a list of patches from the caller's patch to the target-patch using BFS.
   if target-patch = nobody or patch-here = target-patch [ report [] ]
 
-  ;; Use a table to store parent and distance information locally for this pathfinding run
-  ;; Key: (list pxcor pycor) of the patch, Value: list [parent-patch, distance-from-start]
   let path-data table:make
 
   let queue (list patch-here)
 
-  ;; Store data for the starting patch using its coordinates as the key
-  table:put path-data (list pxcor pycor) (list patch-here 0) ;; [parent (patch itself), distance]
+  table:put path-data (list pxcor pycor) (list patch-here 0)
 
   let found-target? false
   let path-patches []
 
-  ;; Define walkable patches
   let walkable-patch-types ["chemin" "entree" "queue" "exit"]
 
   while [not empty? queue and not found-target?] [
     let current-patch first queue
     set queue but-first queue
 
-    ;; Get the data for current-patch from the table using its coordinates
     let current-patch-data table:get path-data (list [pxcor] of current-patch [pycor] of current-patch)
 
     if current-patch = target-patch [
       set found-target? true
-      ;; Reconstruct path
       let temp-patch target-patch
-      ;; Loop while we haven't reached the starting patch and the path is valid
       while [temp-patch != patch-here and temp-patch != nobody] [
-        ;; Check if the key exists before attempting to get, to prevent errors on incomplete paths
         if not table:has-key? path-data (list [pxcor] of temp-patch [pycor] of temp-patch) [
-          report [] ;; Path is broken, return empty
+          report []
         ]
         set path-patches fput temp-patch path-patches
-        ;; Get the parent patch from our local path-data table
         set temp-patch item 0 table:get path-data (list [pxcor] of temp-patch [pycor] of temp-patch)
       ]
       report path-patches
     ]
 
-    ;; Ask current-patch to find its neighbors and process them
     ask current-patch [
       foreach sort neighbors4 [neighbor-patch ->
-        ;; Check if neighbor is walkable and hasn't been visited yet (by checking if its coords are a key)
         if (member? [type-patch] of neighbor-patch walkable-patch-types and not table:has-key? path-data (list [pxcor] of neighbor-patch [pycor] of neighbor-patch)) [
-          let current-distance item 1 current-patch-data ;; Use current-patch-data obtained earlier
+          let current-distance item 1 current-patch-data
           table:put path-data (list [pxcor] of neighbor-patch [pycor] of neighbor-patch) (list current-patch (current-distance + 1))
           set queue lput neighbor-patch queue
         ]
@@ -239,7 +213,6 @@ to-report find-path [target-patch]
     ]
   ]
 
-  ;; If target was not found, report empty list
   report []
 end
 
@@ -247,37 +220,29 @@ end
 to avancer-case
   if destination = nobody [ stop ]
 
-  ;; Path Calculation / Validation
-  ;; If we don't have a path, or our path leads to the wrong place, find a new one.
   if (empty? path or last path != destination) [
     set path find-path destination
   ]
 
-  ;; If still no path (e.g., destination is unreachable),
-  ;; give up and choose a new destination on the next tick.
   if empty? path [
     set destination nobody
     set current-attraction nobody
     stop
   ]
 
-  ;; Move to the next patch on the path
   let next-patch item 0 path
   move-to next-patch
   set path but-first path
 
-  ;; Arrival Logic
   if patch-here = destination [
-    ;; If arriving at an exit
     if is-leaving and [type-patch] of patch-here = "exit" [
       set nb-total-sortis nb-total-sortis + 1
       die
     ]
-    ;; If arriving at a queue
     if [type-patch] of patch-here = "queue" [
       set dans-file? true
       set temps-attente 0
-      set path [] ;; Clear path now that we've arrived
+      set path []
     ]
   ]
 end
@@ -297,25 +262,21 @@ to go
         set dans-file? false
         set current-attraction nobody
         set destination nobody
-        ;; Person will choose a new destination on the next tick
       ]
     ]
   ]
   tick
 end
 
-;; ADDED: Reporter to count people in queues.
 to-report nb-dans-attractions
   report count people with [dans-file?]
 end
 
-;; ADDED: Reporter to count people moving.
 to-report nb-en-parcours
   report count people with [not dans-file?]
 end
 
 
-;; Helper procedure to convert a string to a list of its characters
 to-report string-to-chars [s]
   report map [i -> substring s i (i + 1)] (range (length s))
 end
