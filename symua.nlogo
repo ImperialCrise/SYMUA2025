@@ -16,6 +16,21 @@ people-own [
   duree-attraction
 ]
 
+breed [attractions attraction]
+
+attractions-own [
+  :; This class represents an attraction in the park and has the following fields
+  :;
+  :; - wait-time: The wait time per person in ticks (integer)
+  :; - tags: The tags of the attraction (list of string)
+  :; - capacity: The total capacity of the attraction
+
+  wait-time
+  tags
+  capacity
+]
+
+
 patches-own [
   type-patch
   id-attraction
@@ -26,14 +41,18 @@ globals [
   exit-patches
   nb-total-entres
   nb-total-sortis
-
+  attraction_tags ;;
 ]
 
 
 to setup
   clear-all
+
+  ;; Set global variables
   set nb-total-entres 0
   set nb-total-sortis 0
+  set attraction_tags ["RollerCoaster" "Famille" "Sensation" "Enfant" "Horreur" "Emre (oe c une attraction Emre)"]
+
   if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
   if not is-number? capacite-queue [ set capacite-queue 10 ]
   if not is-number? seed-random [ set seed-random 0 ]
@@ -76,6 +95,9 @@ to load-map
             set type-patch "attraction"
             set id-attraction (word "attr-" x "-" y)
             set pcolor red
+
+            ;; Spawn Attraction type agent
+            spawn-attraction x y
           ]
         [ifelse c = "#" [
             set type-patch "queue"
@@ -110,6 +132,19 @@ to load-map
 end
 
 
+to spawn-attraction [x y]
+  ask patch x y [
+    sprout-attractions 1 [
+      set wait-time random 10
+      set tags n-values (1 + random 2) [ one-of attraction_tags ]
+      set capacity 10 + random 20
+      set shape "house"
+      set color yellow
+    ]
+  ]
+end
+
+
 to spawn-people
   if is-agentset? entree-patches and any? entree-patches [
     repeat nb-visiteurs [
@@ -117,7 +152,7 @@ to spawn-people
         sprout-people 1 [
           set age random 60 + 10
           set en-famille one-of [true false]
-          set preferred-genre one-of ["sensation" "famille" "calme"]
+          set preferred-genre one-of attraction_tags
           set current-attraction nobody
           set path []
           set satisfaction 100
@@ -285,7 +320,7 @@ GRAPHICS-WINDOW
 195
 54
 602
-301
+302
 -1
 -1
 5.0
@@ -390,10 +425,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-611
-54
-727
-99
+633
+62
+749
+107
 NIL
 nb-dans-attractions
 17
@@ -401,10 +436,10 @@ nb-dans-attractions
 11
 
 MONITOR
-611
-99
-716
-144
+633
+107
+738
+152
 NIL
 nb-en-parcours
 17
@@ -427,10 +462,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-610
-144
-715
-189
+632
+152
+737
+197
 NIL
 nb-total-entres
 17
@@ -438,10 +473,10 @@ nb-total-entres
 11
 
 MONITOR
-610
-233
-716
-278
+632
+241
+738
+286
 NIL
 nb-total-sortis
 17
@@ -449,10 +484,10 @@ nb-total-sortis
 11
 
 MONITOR
-610
-189
-715
-234
+632
+197
+737
+242
 NIL
 count people
 17
@@ -490,10 +525,10 @@ NIL
 HORIZONTAL
 
 PLOT
-216
-310
-676
-494
+610
+298
+1070
+482
 People's states
 NIL
 NIL
