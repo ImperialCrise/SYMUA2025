@@ -8,6 +8,9 @@ visiteurs-own [
   dans-file?       ;; boolean
   temps-attente
   duree-attraction
+  objectif         ;; "attraction" ou "sortie"
+  temps-dans-parc
+  attractions-visitees
 ]
 
 patches-own [
@@ -19,12 +22,16 @@ globals [
   entree-patches
   nb-total-entres
   nb-total-sortis
+  max-temps-parc
+  max-attractions-visitees
 ]
 
 to setup
   clear-all
   set nb-total-entres 0
   set nb-total-sortis 0
+  set max-temps-parc 500 ;; Valeur par défaut, sera contrôlée par un slider
+  set max-attractions-visitees 3 ;; Valeur par défaut, sera contrôlée par un slider
   random-seed seed-random
   load-map
   reset-ticks
@@ -102,6 +109,9 @@ to spawn-visiteurs
         set duree-attraction random 30 + 10
         set shape "person"
         set size 1.2
+        set objectif "attraction"
+        set temps-dans-parc 0
+        set attractions-visitees 0
         set nb-total-entres nb-total-entres + 1
       ]
     ]
@@ -111,21 +121,24 @@ end
 to go
   wait (1 / vitesse)
   ask visiteurs [
+    set temps-dans-parc temps-dans-parc + 1
     ifelse not dans-file? [
       ifelse destination = nobody [
-        choisir-destination
+        decider-objectif  ;; CHANGED from choisir-destination
       ] [
         avancer-case destination
       ]
     ] [
       set temps-attente temps-attente + 1
       ifelse temps-attente >= duree-attraction [
+        set attractions-visitees attractions-visitees + 1
         ;; sortir de la queue
         let sortie one-of neighbors4 with [type-patch = "chemin"]
         ifelse sortie != nobody [ move-to sortie ] [ move-to one-of entree-patches ]
         set dans-file? false
         set destination nobody
-        set duree-attraction random 30 + 10
+        set duree-attraction random 30 + 10 ;; TODO: Recheck this logic for how duree-attraction is set
+        decider-objectif ;; Decide next main goal (exit or new attraction)
       ] [ ]
     ]
   ]
@@ -145,24 +158,43 @@ end
 
 to avancer-case [cible]
   if destination != nobody [
-    ifelse distance cible < 0.7 [
-      ifelse [type-patch] of cible = "queue" and count turtles-here < capacite-queue [
-        set dans-file? true
-        set temps-attente 0
-        move-to cible
+    ifelse distance cible < 0.7 [ ;; Agent has reached its target patch
+      ifelse objectif = "sortie" and [type-patch] of cible = "entree" [
+        set nb-total-sortis nb-total-sortis + 1
+        die
       ] [
-        set destination nobody
+        ;; If objective is "attraction" and it's a queue
+        if objectif = "attraction" and [type-patch] of cible = "queue" and count turtles-here < capacite-queue [
+          set dans-file? true
+          set temps-attente 0
+          move-to cible
+        ] else [
+          ;; Could not enter queue (e.g. full, or not a queue), or reached a non-exit target patch
+          ;; or reached an exit patch but objective was not "sortie" (should not happen with current decider-objectif)
+          set destination nobody ;; This will trigger decider-objectif in the next tick
+        ]
       ]
     ] [
+      ;; Movement logic
       let voies neighbors4 with [
-        type-patch = "chemin"
-        or (type-patch = "queue" and count turtles-here < capacite-queue)
+        (type-patch = "chemin") or
+        (objectif = "attraction" and type-patch = "queue" and count turtles-here < capacite-queue) or
+        (objectif = "sortie" and type-patch = "entree")
       ]
       ifelse any? voies [
         let next-step min-one-of voies [distance cible]
-        move-to next-step
+        ifelse next-step != self [ ;; Ensure it actually moves
+          move-to next-step
+        ] [
+          ;; If min-one-of returns self (can happen if already on best patch but not < 0.7)
+          ;; or if no valid voies to move to target, try to unstick
+          rt random 90 lt random 90
+          fd 1 ;; try to move a bit to break deadlock if stuck
+        ]
       ] [
+        ;; No valid path, try to unstick
         rt random 90 lt random 90
+        fd 1 ;; try to move a bit to break deadlock if stuck
       ]
     ]
   ]
@@ -174,6 +206,23 @@ end
 
 to-report nb-en-parcours
   report count visiteurs with [not dans-file?]
+end
+
+to decider-objectif
+  ;; Conditions to decide to exit (can be expanded later)
+  if (temps-dans-parc > max-temps-parc) or (attractions-visitees >= max-attractions-visitees) [
+    set objectif "sortie"
+    if any? entree-patches [
+      set destination one-of entree-patches
+    ] else [
+      ;; Fallback if no entrance patches somehow (should not happen in current map)
+      set destination nobody
+    ]
+  ] else [
+    set objectif "attraction"
+    ;; This will call the existing procedure for choosing an attraction
+    choisir-destination
+  ]
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -379,6 +428,36 @@ capacite-queue
 1
 10
 6.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+181
+385
+353
+418
+max-temps-parc
+max-temps-parc
+100
+2000
+500
+10
+1
+NIL
+HORIZONTAL
+
+SLIDER
+181
+428
+353
+461
+max-attractions-visitees
+max-attractions-visitees
+1
+10
+3
 1
 1
 NIL
