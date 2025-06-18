@@ -1,47 +1,54 @@
-breed [visiteurs visiteur]
+extensions [table]
 
-visiteurs-own [
+breed [people person]
+
+people-own [
   age
-  type-freq        ;; "solo" ou "famille"
-  genre-pref       ;; "sensation" "famille" "calme"
-  destination      ;; la queue ciblé
-  dans-file?       ;; boolean
+  en-famille
+  preferred-genre
+  current-attraction
+  path
+  satisfaction
+  is-leaving
+  destination
+  dans-file?
   temps-attente
   duree-attraction
 ]
 
 patches-own [
-  type-patch       ;; "chemin" "entree" "queue" "attraction" "vide"
+  type-patch
   id-attraction
 ]
 
 globals [
   entree-patches
+  exit-patches
   nb-total-entres
   nb-total-sortis
+
 ]
+
 
 to setup
   clear-all
   set nb-total-entres 0
   set nb-total-sortis 0
+  if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
+  if not is-number? capacite-queue [ set capacite-queue 10 ]
+  if not is-number? seed-random [ set seed-random 0 ]
+  if not is-number? vitesse [ set vitesse 10 ]
   random-seed seed-random
   load-map
   reset-ticks
 end
 
-to-report string-to-chars [s]
-  let out []
-  let i 0
-  while [i < length s] [
-    set out lput substring s i (i + 1) out
-    set i i + 1
-  ]
-  report out
-end
-
 to load-map
-  ;; charge le fichier ASCII du fichier python
+  if not file-exists? "park_ascii.txt" [
+    user-message "Could not find the map file: park_ascii.txt"
+    stop
+  ]
+
   file-open "park_ascii.txt"
   let lines []
   while [not file-at-end?] [
@@ -50,140 +57,238 @@ to load-map
   file-close
 
   let H length lines
-  let W length (string-to-chars item 0 lines)
+  if H = 0 [ user-message "Map file is empty." stop ]
+  let W length (item 0 lines)
   resize-world 0 (W - 1) 0 (H - 1)
-  set-patch-size 1.5
+  set-patch-size 5
   clear-patches
 
-  ;; construit les les chemins
+  let temp-queues []
+
   let y H - 1
   foreach lines [ line ->
     let x 0
     foreach string-to-chars line [ c ->
       ask patch x y [
-        ifelse c = "." [
-          set type-patch "chemin" set pcolor gray
-        ] [
-          ifelse c = "E" [
-            set type-patch "entree" set pcolor green
-          ] [
-            ifelse c = "A" [
-              set type-patch "attraction"
-              set id-attraction (word x "-" y)
-              set pcolor red
-            ] [
-              ifelse c = "#" [
-                set type-patch "queue" set pcolor yellow
-              ] [
-                set type-patch "vide" set pcolor black
-              ]
-            ]
+        ifelse c = "." [ set type-patch "chemin" set pcolor gray ]
+        [ifelse c = "E" [ set type-patch "entree" set pcolor green ]
+        [ifelse c = "A" [
+            set type-patch "attraction"
+            set id-attraction (word "attr-" x "-" y)
+            set pcolor red
           ]
-        ]
+        [ifelse c = "#" [
+            set type-patch "queue"
+            set pcolor yellow
+            set temp-queues lput self temp-queues
+          ]
+        [ifelse c = "X" [
+            set type-patch "exit"
+            set pcolor cyan
+          ]
+        [
+            set type-patch "vide"
+            set pcolor black
+        ]]]]]
       ]
       set x x + 1
     ]
     set y y - 1
   ]
+
+  foreach temp-queues [ q ->
+    ask q [
+      let adjacent-attraction one-of neighbors4 with [ type-patch = "attraction" ]
+      if adjacent-attraction != nobody [
+        set id-attraction [id-attraction] of adjacent-attraction
+      ]
+    ]
+  ]
+
   set entree-patches patches with [type-patch = "entree"]
+  set exit-patches patches with [type-patch = "exit"]
 end
 
-to spawn-visiteurs
-  repeat nb-visiteurs [
-    ask one-of entree-patches [
-      sprout-visiteurs 1 [
-        set age random 60 + 10
-        set type-freq one-of ["solo" "famille"]
-        set genre-pref one-of ["sensation" "famille" "calme"]
-        set color ifelse-value (type-freq = "famille") [ blue ] [ red ]
-        set destination nobody
-        set dans-file? false
-        set temps-attente 0
-        set duree-attraction random 30 + 10
-        set shape "person"
-        set size 1.2
-        set nb-total-entres nb-total-entres + 1
+
+to spawn-people
+  if is-agentset? entree-patches and any? entree-patches [
+    repeat nb-visiteurs [
+      ask one-of entree-patches [
+        sprout-people 1 [
+          set age random 60 + 10
+          set en-famille one-of [true false]
+          set preferred-genre one-of ["sensation" "famille" "calme"]
+          set current-attraction nobody
+          set path []
+          set satisfaction 100
+          set is-leaving false
+          set color ifelse-value (en-famille) [ blue ] [ red ]
+          set destination nobody
+          set dans-file? false
+          set temps-attente 0
+          set duree-attraction 0
+          set shape "person"
+          set size 1.2
+          set nb-total-entres nb-total-entres + 1
+          choose-new-destination
+        ]
       ]
+    ]
+  ]
+end
+
+
+to choose-new-destination
+  if not is-leaving [
+    let potential-attractions patches with [
+      type-patch = "attraction" and
+      any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ]
+    ]
+
+    if any? potential-attractions [
+      let target-attraction one-of potential-attractions
+      let potential-queues patches with [
+        type-patch = "queue" and
+        id-attraction = [id-attraction] of target-attraction and
+        count turtles-here < capacite-queue
+      ]
+
+      if any? potential-queues [
+        set destination one-of potential-queues
+        set current-attraction target-attraction
+        set duree-attraction random 30 + 10
+      ]
+    ]
+  ]
+
+  if destination = nobody [
+    set is-leaving true
+    if any? exit-patches [
+      set destination one-of exit-patches
+    ]
+  ]
+end
+
+to-report find-path [target-patch]
+  if target-patch = nobody or patch-here = target-patch [ report [] ]
+
+  let path-data table:make
+
+  let queue (list patch-here)
+
+  table:put path-data (list pxcor pycor) (list patch-here 0)
+
+  let found-target? false
+  let path-patches []
+
+  let walkable-patch-types ["chemin" "entree" "queue" "exit"]
+
+  while [not empty? queue and not found-target?] [
+    let current-patch first queue
+    set queue but-first queue
+
+    let current-patch-data table:get path-data (list [pxcor] of current-patch [pycor] of current-patch)
+
+    if current-patch = target-patch [
+      set found-target? true
+      let temp-patch target-patch
+      while [temp-patch != patch-here and temp-patch != nobody] [
+        if not table:has-key? path-data (list [pxcor] of temp-patch [pycor] of temp-patch) [
+          report []
+        ]
+        set path-patches fput temp-patch path-patches
+        set temp-patch item 0 table:get path-data (list [pxcor] of temp-patch [pycor] of temp-patch)
+      ]
+      report path-patches
+    ]
+
+    ask current-patch [
+      foreach sort neighbors4 [neighbor-patch ->
+        if (member? [type-patch] of neighbor-patch walkable-patch-types and not table:has-key? path-data (list [pxcor] of neighbor-patch [pycor] of neighbor-patch)) [
+          let current-distance item 1 current-patch-data
+          table:put path-data (list [pxcor] of neighbor-patch [pycor] of neighbor-patch) (list current-patch (current-distance + 1))
+          set queue lput neighbor-patch queue
+        ]
+      ]
+    ]
+  ]
+
+  report []
+end
+
+
+to avancer-case
+  if destination = nobody [ stop ]
+
+  if (empty? path or last path != destination) [
+    set path find-path destination
+  ]
+
+  if empty? path [
+    set destination nobody
+    set current-attraction nobody
+    stop
+  ]
+
+  let next-patch item 0 path
+  move-to next-patch
+  set path but-first path
+
+  if patch-here = destination [
+    if is-leaving and [type-patch] of patch-here = "exit" [
+      set nb-total-sortis nb-total-sortis + 1
+      die
+    ]
+    if [type-patch] of patch-here = "queue" [
+      set dans-file? true
+      set temps-attente 0
+      set path []
     ]
   ]
 end
 
 to go
   wait (1 / vitesse)
-  ask visiteurs [
+  ask people [
     ifelse not dans-file? [
-      ifelse destination = nobody [
-        choisir-destination
-      ] [
-        avancer-case destination
+      if destination = nobody [
+        choose-new-destination
       ]
+      avancer-case
     ] [
       set temps-attente temps-attente + 1
-      ifelse temps-attente >= duree-attraction [
-        ;; sortir de la queue
-        let sortie one-of neighbors4 with [type-patch = "chemin"]
-        ifelse sortie != nobody [ move-to sortie ] [ move-to one-of entree-patches ]
+      if temps-attente >= duree-attraction [
+        set satisfaction satisfaction + (random 20 + 10)
         set dans-file? false
+        set current-attraction nobody
         set destination nobody
-        set duree-attraction random 30 + 10
-      ] [ ]
+      ]
     ]
   ]
   tick
 end
 
-to choisir-destination
-  let dispo patches with [
-    type-patch = "queue" and count turtles-here < capacite-queue
-  ]
-  ifelse any? dispo [
-    set destination one-of dispo
-  ] [
-    set destination nobody
-  ]
-end
-
-to avancer-case [cible]
-  if destination != nobody [
-    ifelse distance cible < 0.7 [
-      ifelse [type-patch] of cible = "queue" and count turtles-here < capacite-queue [
-        set dans-file? true
-        set temps-attente 0
-        move-to cible
-      ] [
-        set destination nobody
-      ]
-    ] [
-      let voies neighbors4 with [
-        type-patch = "chemin"
-        or (type-patch = "queue" and count turtles-here < capacite-queue)
-      ]
-      ifelse any? voies [
-        let next-step min-one-of voies [distance cible]
-        move-to next-step
-      ] [
-        rt random 90 lt random 90
-      ]
-    ]
-  ]
-end
-
 to-report nb-dans-attractions
-  report count visiteurs with [dans-file?]
+  report count people with [dans-file?]
 end
 
 to-report nb-en-parcours
-  report count visiteurs with [not dans-file?]
+  report count people with [not dans-file?]
+end
+
+
+to-report string-to-chars [s]
+  report map [i -> substring s i (i + 1)] (range (length s))
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
-226
-51
-762
-377
+195
+54
+602
+301
 -1
 -1
-6.6042
+5.0
 1
 10
 1
@@ -204,10 +309,10 @@ ticks
 30.0
 
 BUTTON
-27
-36
-93
-69
+5
+7
+71
+40
 setup
 setup
 NIL
@@ -221,10 +326,10 @@ NIL
 1
 
 BUTTON
-109
-39
-172
-72
+211
+8
+274
+41
 go
 go
 T
@@ -238,12 +343,12 @@ NIL
 1
 
 BUTTON
-45
-116
-176
-149
-spawn-visiteurs
-spawn-visiteurs
+74
+8
+205
+41
+spawn-people
+spawn-people
 NIL
 1
 T
@@ -255,25 +360,25 @@ NIL
 1
 
 SLIDER
-30
-166
-202
-199
+5
+117
+177
+150
 nb-visiteurs
 nb-visiteurs
 1
 500
-96.0
+50.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-22
-217
-194
-250
+5
+182
+177
+215
 seed-random
 seed-random
 0
@@ -285,10 +390,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-9
-313
-149
-358
+611
+54
+727
+99
 NIL
 nb-dans-attractions
 17
@@ -296,10 +401,10 @@ nb-dans-attractions
 11
 
 MONITOR
-14
-375
-128
-420
+611
+99
+716
+144
 NIL
 nb-en-parcours
 17
@@ -307,25 +412,25 @@ nb-en-parcours
 11
 
 SLIDER
-29
-265
-201
-298
+6
+150
+178
+183
 max-attente
 max-attente
 10
 100
-40.0
+10.0
 1
 1
 NIL
 HORIZONTAL
 
 MONITOR
-18
-444
-128
-489
+610
+144
+715
+189
 NIL
 nb-total-entres
 17
@@ -333,10 +438,10 @@ nb-total-entres
 11
 
 MONITOR
-135
-444
-241
-489
+610
+233
+716
+278
 NIL
 nb-total-sortis
 17
@@ -344,45 +449,64 @@ nb-total-sortis
 11
 
 MONITOR
-23
-500
-128
-545
+610
+189
+715
+234
 NIL
-count visiteurs
+count people
 17
 1
 11
 
 SLIDER
-44
-98
-216
-131
+5
+49
+177
+82
 vitesse
 vitesse
 0.1
 10
-9.1
-1
+5.0
+0.1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-181
-342
-353
-375
+5
+83
+177
+116
 capacite-queue
 capacite-queue
 1
 10
-6.0
+4.0
 1
 1
 NIL
 HORIZONTAL
+
+PLOT
+216
+310
+676
+494
+People's states
+NIL
+NIL
+0.0
+10.0
+0.0
+10.0
+true
+true
+"" ""
+PENS
+"dans attractions" 1.0 0 -2674135 true "" "plot nb-dans-attractions"
+"en parcours" 1.0 0 -13840069 true "" "plot nb-en-parcours"
 
 @#$#@#$#@
 ## WHAT IS IT?
