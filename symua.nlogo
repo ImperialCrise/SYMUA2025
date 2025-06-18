@@ -136,7 +136,7 @@ to spawn-attraction [x y]
   ask patch x y [
     sprout-attractions 1 [
       set wait-time random 10
-      set tags n-values (1 + random 2) [ one-of attraction_tags ]
+      set tags n-of (1 + random 2) attraction_tags
       set capacity 10 + random 20
       set shape "house"
       set color yellow
@@ -174,10 +174,25 @@ end
 
 
 to choose-new-destination
+  let visitor self
   if not is-leaving [
-    let potential-attractions patches with [
-      type-patch = "attraction" and
-      any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ]
+    let preferred-attractions patches with [
+     type-patch = "attraction" and
+      any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ] and
+      any? attractions-here with [
+        member? [preferred-genre] of visitor [tags] of self
+      ]
+    ]
+    let potential-attractions []
+    ifelse not any? preferred-attractions [
+      set potential-attractions preferred-attractions
+    ] [
+      set potential-attractions patches with [type-patch = "attraction" and
+        any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ] and
+        any? attractions-here with [
+          not member? [preferred-genre] of visitor [tags] of self
+        ]
+      ]
     ]
 
     if any? potential-attractions [
@@ -319,8 +334,8 @@ end
 GRAPHICS-WINDOW
 195
 54
-602
-302
+603
+303
 -1
 -1
 5.0
