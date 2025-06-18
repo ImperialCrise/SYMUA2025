@@ -1,8 +1,10 @@
+extensions [table]
+
 breed [people person]
 
 people-own [
   age
-  type        ;; "solo" ou "famille"
+  en-famille
   preferred-genre       ;; "sensation" "famille" "calme"
   current-attraction
   path
@@ -15,38 +17,45 @@ people-own [
 ]
 
 patches-own [
-  type-patch       ;; "chemin" "entree" "queue" "attraction" "vide"
+  type-patch       ;; "chemin" "entree" "queue" "attraction" "vide" "exit"
   id-attraction
 ]
 
 globals [
   entree-patches
-  exit-patches ;; New global for exit patches
+  exit-patches
   nb-total-entres
   nb-total-sortis
+  ;; ces entrees doivent rester commentées sinon il y a une erreur au check
+  ;;nb-visiteurs      ;; Doit être un slider dans l'interface
+  ;;capacite-queue    ;; Doit être un slider dans l'interface
+  ;;seed-random       ;; Doit être un un slider dans l'interface
+  ;;vitesse           ;; Doit être un slider dans l'interface
 ]
+
 
 to setup
   clear-all
   set nb-total-entres 0
   set nb-total-sortis 0
+  ;; Valeurs par défaut si les sliders ne sont pas créés
+  if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
+  if not is-number? capacite-queue [ set capacite-queue 10 ]
+  if not is-number? seed-random [ set seed-random 0 ]
+  if not is-number? vitesse [ set vitesse 10 ]
   random-seed seed-random
   load-map
   reset-ticks
 end
 
-to-report string-to-chars [s]
-  let out []
-  let i 0
-  while [i < length s] [
-    set out lput substring s i (i + 1) out
-    set i i + 1
-  ]
-  report out
-end
-
 to load-map
-  ;; charge le fichier ASCII du fichier python
+  ;; This procedure assumes a file named "park_ascii.txt" exists in the
+  ;; same directory as the model file.
+  if not file-exists? "park_ascii.txt" [
+    user-message "Could not find the map file: park_ascii.txt"
+    stop
+  ]
+
   file-open "park_ascii.txt"
   let lines []
   while [not file-at-end?] [
@@ -55,85 +64,220 @@ to load-map
   file-close
 
   let H length lines
-  let W length (string-to-chars item 0 lines)
+  if H = 0 [ user-message "Map file is empty." stop ]
+  let W length (item 0 lines)
   resize-world 0 (W - 1) 0 (H - 1)
-  set-patch-size 1.5
+  set-patch-size 10
   clear-patches
 
-  ;; construit les les chemins
+  ;; Create a temporary list of queue patches to process later
+  let temp-queues []
+
+  ;; First pass: Set basic patch types and colors
   let y H - 1
   foreach lines [ line ->
     let x 0
     foreach string-to-chars line [ c ->
       ask patch x y [
-        ifelse c = "." [
-          set type-patch "chemin" set pcolor gray
-        ] [
-          ifelse c = "E" [
-            set type-patch "entree" set pcolor green
-          ] [
-            ifelse c = "A" [
-              set type-patch "attraction"
-              set id-attraction (word x "-" y)
-              set pcolor red
-            ] [
-              ifelse c = "#" [
-                set type-patch "queue" set pcolor yellow
-                ;; New logic: find adjacent attraction and set id-attraction
-                let adjacent-attraction one-of neighbors4 with [
-                  pxcor = [pxcor] of myself or pycor = [pycor] of myself ;; Ensure it's a cardinal neighbor
-                  ;; We need to be careful here. When load-map runs, attraction patches might not have their type-patch set yet
-                  ;; if they are later in the file reading order.
-                  ;; This assumes attractions 'A' are defined before or near their queues '#' in the park_ascii.txt
-                  ;; A safer way would be to do a second pass after all patches have their basic types.
-                  ;; For now, let's rely on the map structure or do a check on the character 'A'.
-                  ;; The prompt implies 'type-patch = "attraction"' will work.
-                  type-patch = "attraction"
-                ]
-                if adjacent-attraction != nobody [
-                  set id-attraction [id-attraction] of adjacent-attraction
-                ]
-              ] [
-                ifelse c = "X" [ ;; NEW EXIT PATCH TYPE
-                  set type-patch "exit"
-                  set pcolor cyan
-                ] [
-                  set type-patch "vide" set pcolor black
-                ]
-              ]
-            ]
+        ifelse c = "." [ set type-patch "chemin" set pcolor gray ]
+        [ifelse c = "E" [ set type-patch "entree" set pcolor green ]
+        [ifelse c = "A" [
+            set type-patch "attraction"
+            set id-attraction (word "attr-" x "-" y) ;; Give unique ID
+            set pcolor red
           ]
-        ]
+        [ifelse c = "#" [
+            set type-patch "queue"
+            set pcolor yellow
+            set temp-queues lput self temp-queues ;; Add this patch to the list
+          ]
+        [ifelse c = "X" [
+            set type-patch "exit"
+            set pcolor cyan
+          ]
+        [
+            set type-patch "vide"
+            set pcolor black
+        ]]]]]
       ]
       set x x + 1
     ]
     set y y - 1
   ]
+
+  ;; Second pass: Link queues to their adjacent attractions
+  foreach temp-queues [ q ->
+    ask q [
+      let adjacent-attraction one-of neighbors4 with [ type-patch = "attraction" ]
+      if adjacent-attraction != nobody [
+        set id-attraction [id-attraction] of adjacent-attraction
+      ]
+    ]
+  ]
+
+  ;; Populate global agentsets
   set entree-patches patches with [type-patch = "entree"]
-  set exit-patches patches with [type-patch = "exit"] ;; Populate exit-patches
+  set exit-patches patches with [type-patch = "exit"]
 end
 
+
 to spawn-people
-  repeat nb-visiteurs [
-    ask one-of entree-patches [
-      sprout-people 1 [
-        set age random 60 + 10
-        set type one-of ["solo" "famille"]
-        set preferred-genre one-of ["sensation" "famille" "calme"]
-        set current-attraction nobody
-        set path []
-        set satisfaction 100
-        set is-leaving false
-        set color ifelse-value (type = "famille") [ blue ] [ red ]
-        set destination nobody
-        set dans-file? false
-        set temps-attente 0
-        ;; duree-attraction is now set by choose-new-destination when an attraction is chosen
-        set shape "person"
-        set size 1.2
-        set nb-total-entres nb-total-entres + 1
-        choose-new-destination
+  if is-agentset? entree-patches and any? entree-patches [
+    repeat nb-visiteurs [
+      ask one-of entree-patches [
+        sprout-people 1 [
+          set age random 60 + 10
+          set en-famille one-of [true false]
+          set preferred-genre one-of ["sensation" "famille" "calme"]
+          set current-attraction nobody
+          set path []
+          set satisfaction 100
+          set is-leaving false
+          set color ifelse-value (en-famille) [ blue ] [ red ]
+          set destination nobody
+          set dans-file? false
+          set temps-attente 0
+          set duree-attraction 0
+          set shape "person"
+          set size 1.2
+          set nb-total-entres nb-total-entres + 1
+          choose-new-destination
+        ]
       ]
+    ]
+  ]
+end
+
+
+to choose-new-destination
+  ;; People who are not leaving look for an attraction
+  if not is-leaving [
+    let potential-attractions patches with [
+      type-patch = "attraction" and
+      any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ]
+    ]
+
+    if any? potential-attractions [
+      let target-attraction one-of potential-attractions
+      let potential-queues patches with [
+        type-patch = "queue" and
+        id-attraction = [id-attraction] of target-attraction and
+        count turtles-here < capacite-queue
+      ]
+
+      if any? potential-queues [
+        set destination one-of potential-queues
+        set current-attraction target-attraction
+        set duree-attraction random 30 + 10
+      ]
+    ]
+  ]
+
+  ;; If no destination was found (either no attractions or person is leaving)
+  if destination = nobody [
+    set is-leaving true ;; Now the person will try to exit
+    if any? exit-patches [
+      set destination one-of exit-patches
+    ]
+  ]
+end
+
+;; **FIXED**: BFS Pathfinding implementation using local variables/tables with **valid keys**
+to-report find-path [target-patch]
+  ;; Reports a list of patches from the caller's patch to the target-patch using BFS.
+  if target-patch = nobody or patch-here = target-patch [ report [] ]
+
+  ;; Use a table to store parent and distance information locally for this pathfinding run
+  ;; Key: (list pxcor pycor) of the patch, Value: list [parent-patch, distance-from-start]
+  let path-data table:make
+
+  let queue (list patch-here)
+
+  ;; Store data for the starting patch using its coordinates as the key
+  table:put path-data (list pxcor pycor) (list patch-here 0) ;; [parent (patch itself), distance]
+
+  let found-target? false
+  let path-patches []
+
+  ;; Define walkable patches
+  let walkable-patch-types ["chemin" "entree" "queue" "exit"]
+
+  while [not empty? queue and not found-target?] [
+    let current-patch first queue
+    set queue but-first queue
+
+    ;; Get the data for current-patch from the table using its coordinates
+    let current-patch-data table:get path-data (list [pxcor] of current-patch [pycor] of current-patch)
+
+    if current-patch = target-patch [
+      set found-target? true
+      ;; Reconstruct path
+      let temp-patch target-patch
+      ;; Loop while we haven't reached the starting patch and the path is valid
+      while [temp-patch != patch-here and temp-patch != nobody] [
+        ;; Check if the key exists before attempting to get, to prevent errors on incomplete paths
+        if not table:has-key? path-data (list [pxcor] of temp-patch [pycor] of temp-patch) [
+          report [] ;; Path is broken, return empty
+        ]
+        set path-patches fput temp-patch path-patches
+        ;; Get the parent patch from our local path-data table
+        set temp-patch item 0 table:get path-data (list [pxcor] of temp-patch [pycor] of temp-patch)
+      ]
+      report path-patches
+    ]
+
+    ;; Ask current-patch to find its neighbors and process them
+    ask current-patch [
+      foreach sort neighbors4 [neighbor-patch ->
+        ;; Check if neighbor is walkable and hasn't been visited yet (by checking if its coords are a key)
+        if (member? [type-patch] of neighbor-patch walkable-patch-types and not table:has-key? path-data (list [pxcor] of neighbor-patch [pycor] of neighbor-patch)) [
+          let current-distance item 1 current-patch-data ;; Use current-patch-data obtained earlier
+          table:put path-data (list [pxcor] of neighbor-patch [pycor] of neighbor-patch) (list current-patch (current-distance + 1))
+          set queue lput neighbor-patch queue
+        ]
+      ]
+    ]
+  ]
+
+  ;; If target was not found, report empty list
+  report []
+end
+
+
+to avancer-case
+  if destination = nobody [ stop ]
+
+  ;; Path Calculation / Validation
+  ;; If we don't have a path, or our path leads to the wrong place, find a new one.
+  if (empty? path or last path != destination) [
+    set path find-path destination
+  ]
+
+  ;; If still no path (e.g., destination is unreachable),
+  ;; give up and choose a new destination on the next tick.
+  if empty? path [
+    set destination nobody
+    set current-attraction nobody
+    stop
+  ]
+
+  ;; Move to the next patch on the path
+  let next-patch item 0 path
+  move-to next-patch
+  set path but-first path
+
+  ;; Arrival Logic
+  if patch-here = destination [
+    ;; If arriving at an exit
+    if is-leaving and [type-patch] of patch-here = "exit" [
+      set nb-total-sortis nb-total-sortis + 1
+      die
+    ]
+    ;; If arriving at a queue
+    if [type-patch] of patch-here = "queue" [
+      set dans-file? true
+      set temps-attente 0
+      set path [] ;; Clear path now that we've arrived
     ]
   ]
 end
@@ -142,178 +286,48 @@ to go
   wait (1 / vitesse)
   ask people [
     ifelse not dans-file? [
-      ifelse destination = nobody [
+      if destination = nobody [
         choose-new-destination
-      ] [
-        avancer-case ;; Call updated
       ]
-    ] [ ;; Agent is in a queue (dans-file? is true)
+      avancer-case
+    ] [
       set temps-attente temps-attente + 1
       if temps-attente >= duree-attraction [
-        set satisfaction satisfaction + (random 20 + 10) ;; Increase satisfaction
+        set satisfaction satisfaction + (random 20 + 10)
         set dans-file? false
-        set current-attraction nobody ;; Finished with this attraction
-        set destination nobody      ;; No longer heading to this queue
-        ;; duree-attraction will be set by choose-new-destination for the *next* ride
-        choose-new-destination  ;; Decide what to do next
+        set current-attraction nobody
+        set destination nobody
+        ;; Person will choose a new destination on the next tick
       ]
     ]
   ]
   tick
 end
 
-to choose-new-destination
-  ;; Placeholder for exit condition logic
-  ;; For now, agents do not randomly decide to leave here.
-  ;; This will be handled by is-leaving attribute checks elsewhere or future enhancements.
-
-  let potential-attractions patches with [type-patch = "attraction"]
-  ;; let preferred-attractions potential-attractions with [ member? preferred-genre [genre-of-attraction] of self ]
-  ;; NOTE: [genre-of-attraction] is a placeholder for how genre is defined for an attraction.
-  ;; This needs to be implemented or clarified based on how attraction genres are stored.
-  ;; For now, to make it runnable, let's assume attractions don't have genres yet and any attraction is fine.
-  ;; So, we'll just use 'potential-attractions' for now.
-  let preferred-attractions potential-attractions ;; Simplified for now
-
-  if not is-leaving {
-    ;; Find attractions that have an associated queue patch nearby.
-    ;; It assumes 'id-attraction' is unique for an attraction and its queue.
-    let available-attractions preferred-attractions with [
-      let current-attraction-id id-attraction
-      any? (patches in-radius 2 with [type-patch = "queue" and id-attraction = current-attraction-id])
-    ]
-
-    let target-attraction nobody
-    if any? available-attractions {
-      ;; TODO: Implement more sophisticated selection logic:
-      ;; - Filter by preferred-genre (once attraction genres are defined for patches)
-      ;; - Consider queue length
-      ;; - Consider distance
-
-      set target-attraction one-of available-attractions
-    }
-
-    if target-attraction != nobody {
-      set current-attraction target-attraction
-
-      ;; More robustly find an available queue for the chosen attraction
-      let potential-queues (patches in-radius 2 from current-attraction with [
-        type-patch = "queue" and
-        id-attraction = [id-attraction] of current-attraction
-      ])
-      let available-queues potential-queues with [count turtles-here < capacite-queue]
-      let queue-patch one-of available-queues
-
-      if queue-patch != nobody {
-        set destination queue-patch
-        set duree-attraction random 30 + 10 ;; Set duration for the chosen attraction
-      } else {
-        set destination nobody ;; No suitable queue found or all are full
-        set current-attraction nobody
-        ;; Agent might try to pick another attraction immediately or wait. For now, it will try next tick.
-      }
-    } else {
-      set destination nobody ;; No attraction found
-      set current-attraction nobody
-    }
-  } else {
-    ;; Logic for leaving the park
-    ;; Their destination should be set to an exit patch.
-    if any? exit-patches {
-      set destination one-of exit-patches
-    } else {
-      ;; Fallback if no exit patches are defined
-      set destination one-of patches with [type-patch = "entree"]
-    }
-  }
-end
-
-to avancer-case ;; cible parameter removed, new logic implemented
-  if destination = nobody [ stop ] ;; If no destination, then stop.
-
-  ;; 1. Path Calculation / Validation
-  if (empty? path or last path != destination) {
-    ;; If destination is invalid for pathfinding, clear it and choose a new one.
-    if destination = nobody or [type-patch] of destination = "vide" or [type-patch] of destination = "attraction" {
-      set destination nobody
-      set current-attraction nobody
-      set path []
-      if not is-leaving { choose-new-destination }
-      stop ;; Stop this run of avancer-case
-    }
-
-    set path path-to destination
-
-    if empty? path {
-      ;; No path found. Agent gives up on this destination.
-      set destination nobody
-      set current-attraction nobody
-      if not is-leaving { choose-new-destination }
-      stop ;; Stop this run of avancer-case
-    }
-  }
-
-  ;; 2. Movement
-  ;; If a path exists, move to the next patch in the path.
-  if not empty? path {
-    let next-patch item 0 path
-    move-to next-patch
-    set path but-first path ;; Remove the patch we just moved to from our path plan.
-  }
-
-  ;; 3. Reaching Destination
-  ;; Check if the agent has arrived at its destination.
-  if patch-here = destination {
-    if is-leaving {
-      ;; Agent is leaving and has reached an exit.
-      if [type-patch] of destination = "exit" { ;; UPDATED CONDITION to check for "exit"
-        set nb-total-sortis nb-total-sortis + 1
-        die ;; Agent leaves the park.
-      }
-    } else {
-      ;; Agent has arrived at an attraction queue.
-      if [type-patch] of destination = "queue" {
-        ;; Check if there's space in the queue.
-        if count other turtles-here < capacite-queue {
-          set dans-file? true      ;; Agent is now in the queue.
-          set temps-attente 0      ;; Reset wait time.
-          set path []              ;; Clear path as agent has arrived.
-          ;; current-attraction remains as set by choose-new-destination
-        } else {
-          ;; Queue is full. Agent needs to choose a new destination.
-          set destination nobody
-          set current-attraction nobody
-          set path []
-          if not is-leaving { choose-new-destination } ;; only choose new if not intending to leave
-        }
-      } else {
-        ;; Agent arrived at a destination that isn't a queue (and not leaving). This shouldn't ideally happen.
-        ;; Agent needs to choose a new destination.
-        set destination nobody
-        set current-attraction nobody
-        set path []
-        if not is-leaving { choose-new-destination }
-      }
-    }
-  }
-end
-
+;; ADDED: Reporter to count people in queues.
 to-report nb-dans-attractions
   report count people with [dans-file?]
 end
 
+;; ADDED: Reporter to count people moving.
 to-report nb-en-parcours
   report count people with [not dans-file?]
+end
+
+
+;; Helper procedure to convert a string to a list of its characters
+to-report string-to-chars [s]
+  report map [i -> substring s i (i + 1)] (range (length s))
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
 226
 51
-762
-377
+1034
+540
 -1
 -1
-6.6042
+10.0
 1
 10
 1
@@ -393,7 +407,7 @@ nb-visiteurs
 nb-visiteurs
 1
 500
-96.0
+204.0
 1
 1
 NIL
@@ -445,7 +459,7 @@ max-attente
 max-attente
 10
 100
-40.0
+10.0
 1
 1
 NIL
@@ -508,7 +522,7 @@ capacite-queue
 capacite-queue
 1
 10
-6.0
+10.0
 1
 1
 NIL
