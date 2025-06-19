@@ -48,9 +48,9 @@ globals [
   nb-total-sortis
   attraction_tags ;;
   afficher-labels?
-  probabilite-spawn-groupe
-  vitesse-arrivee
-  vitesse-depart
+  ; probabilite-spawn-groupe
+  ; vitesse-arrivee
+  ; vitesse-depart
 ]
 
 
@@ -310,36 +310,34 @@ to avancer-case
   ]
 
   ifelse is-leaving [
-    let steps-to-take floor(vitesse-depart)
-    if steps-to-take < 1 [ set steps-to-take 1 ]
-    repeat steps-to-take [
-      if empty? path [ break ] ;; break from repeat
-      let next-patch item 0 path
-      move-to next-patch
-      set path but-first path
-      if patch-here = destination [
-        if [type-patch] of patch-here = "exit" [
-          set nb-total-sortis nb-total-sortis + 1
-          die ;; This will also exit the repeat loop and the procedure
-        ]
-        break ;; break from repeat if destination reached (e.g. an intermediate point if path logic changes later)
-      ]
-    ]
-  ] [
-    ;; Standard movement for non-leaving agents
+  let steps-to-take floor(vitesse-depart)
+  if steps-to-take < 1 [ set steps-to-take 1 ]
+  repeat steps-to-take [
+    if empty? path [ stop ] ;; instead of break
     let next-patch item 0 path
     move-to next-patch
     set path but-first path
     if patch-here = destination [
-      if [type-patch] of patch-here = "queue" [
-        set dans-file? true
-        set temps-attente 0
-        set path []
+      if [type-patch] of patch-here = "exit" [
+        set nb-total-sortis nb-total-sortis + 1
+        die
       ]
-      ;; Note: if destination is not a queue, the agent will just pause here until next tick
-      ;; and choose-new-destination is called if destination becomes nobody.
+      stop ;; replaces break
     ]
   ]
+] [
+  let next-patch item 0 path
+  move-to next-patch
+  set path but-first path
+  if patch-here = destination [
+    if [type-patch] of patch-here = "queue" [
+      set dans-file? true
+      set temps-attente 0
+      set path []
+    ]
+  ]
+]
+
 end
 
 to go
@@ -461,10 +459,10 @@ ticks
 30.0
 
 BUTTON
-5
-7
-71
-40
+3
+10
+69
+43
 setup
 setup
 NIL
@@ -478,10 +476,10 @@ NIL
 1
 
 BUTTON
-211
-8
-274
-41
+73
+10
+136
+43
 go
 go
 T
@@ -495,27 +493,10 @@ NIL
 1
 
 BUTTON
-74
-8
-205
-41
-spawn-people
-spawn-people
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-277
-8
-360
-41
+139
+10
+227
+43
 labels on/off
 toggle-labels
 NIL
@@ -648,7 +629,7 @@ vitesse
 vitesse
 0.1
 10
-5.0
+10.0
 0.1
 1
 NIL
@@ -693,7 +674,7 @@ vitesse-arrivee
 vitesse-arrivee
 1
 10
-5
+5.0
 1
 1
 NIL
@@ -708,7 +689,7 @@ vitesse-depart
 vitesse-depart
 1
 10
-5
+5.0
 1
 1
 NIL
@@ -733,6 +714,7 @@ PENS
 "dans attractions" 1.0 0 -2674135 true "" "plot nb-dans-attractions"
 "en parcours" 1.0 0 -13840069 true "" "plot nb-en-parcours"
 "en queue" 1.0 0 -955883 true "" "plot nb-en-queue"
+"total" 1.0 0 -7500403 true "" "plot count people"
 
 @#$#@#$#@
 ## WHAT IS IT?
