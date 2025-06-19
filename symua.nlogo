@@ -18,13 +18,23 @@ people-own [
 ]
 
 attractions-own [
+  :; This class represents an attraction in the park and has the following fields
+  :;
+  :; - wait-time: The wait time per person in ticks (integer)
+  :; - tags: The tags of the attraction (list of string)
+  :; - capacity: The total capacity of the attraction
+
+  wait-time
+  tags
+  capacity
+
   popularite
-  capacite-attraction
   visiteurs-dans
   visiteurs-en-queue
   temps-moyen-restant
   taux-occupation
 ]
+
 
 patches-own [
   type-patch
@@ -36,15 +46,21 @@ globals [
   exit-patches
   nb-total-entres
   nb-total-sortis
+  attraction_tags ;;
   afficher-labels?
 ]
 
 
 to setup
   clear-all
+
+  ;; Set global variables
   set nb-total-entres 0
   set nb-total-sortis 0
+  set attraction_tags ["RollerCoaster" "Famille" "Sensation" "Enfant" "Horreur" "Emre (oe c une attraction Emre)"]
+
   set afficher-labels? false
+
   if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
   if not is-number? capacite-queue [ set capacite-queue 10 ]
   if not is-number? seed-random [ set seed-random 0 ]
@@ -87,17 +103,8 @@ to load-map
             set type-patch "attraction"
             set id-attraction (word "attr-" x "-" y)
             set pcolor gray
-            sprout-attractions 1 [
-              set popularite random-float 10.0
-              set capacite-attraction 20 + random 30
-              set visiteurs-dans []
-              set visiteurs-en-queue 0
-              set temps-moyen-restant 0
-              set taux-occupation 0
-              set shape "house"
-              set color red
-              set size 1.5
-            ]
+            ;; Spawn Attraction type agent
+            spawn-attraction x y
           ]
         [ifelse c = "#" [
             set type-patch "queue"
@@ -132,6 +139,28 @@ to load-map
 end
 
 
+to spawn-attraction [x y]
+  ask patch x y [
+    sprout-attractions 1 [
+      set wait-time random 10
+      set tags n-of (1 + random 2) attraction_tags
+      set capacity 20 + random 30
+      set shape "house"
+      set color yellow
+
+      set popularite random-float 10.0
+      set visiteurs-dans []
+      set visiteurs-en-queue 0
+      set temps-moyen-restant 0
+      set taux-occupation 0
+      set shape "house"
+      set color red
+      set size 1.5
+    ]
+  ]
+end
+
+
 to spawn-people
   if is-agentset? entree-patches and any? entree-patches [
     repeat nb-visiteurs [
@@ -139,7 +168,7 @@ to spawn-people
         sprout-people 1 [
           set age random 60 + 10
           set en-famille one-of [true false]
-          set preferred-genre one-of ["sensation" "famille" "calme"]
+          set preferred-genre one-of attraction_tags
           set current-attraction nobody
           set path []
           set satisfaction 100
@@ -161,10 +190,25 @@ end
 
 
 to choose-new-destination
+  let visitor self
   if not is-leaving [
-    let potential-attractions patches with [
-      type-patch = "attraction" and
-      any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ]
+    let preferred-attractions patches with [
+     type-patch = "attraction" and
+      any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ] and
+      any? attractions-here with [
+        member? [preferred-genre] of visitor [tags] of self
+      ]
+    ]
+    let potential-attractions []
+    ifelse not any? preferred-attractions [
+      set potential-attractions preferred-attractions
+    ] [
+      set potential-attractions patches with [type-patch = "attraction" and
+        any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ] and
+        any? attractions-here with [
+          not member? [preferred-genre] of visitor [tags] of self
+        ]
+      ]
     ]
 
     if any? potential-attractions [
@@ -287,7 +331,7 @@ to go
       ]
     ]
     ]
-  
+
   mettre-a-jour-stats-attractions
   if afficher-labels? [
     afficher-labels-attractions
@@ -318,13 +362,13 @@ to mettre-a-jour-stats-attractions
     let patch-attraction patch-here
     let visiteurs-dans-attraction count people with [current-attraction = patch-attraction and dans-file?]
         set visiteurs-dans visiteurs-dans-attraction
-    
+
     let attraction-id [id-attraction] of patch-here
     let queues-attraction patches with [type-patch = "queue" and id-attraction = attraction-id]
         set visiteurs-en-queue sum [count people-here] of queues-attraction
-    
-        set taux-occupation (visiteurs-dans / capacite-attraction) * 100
-    
+
+        set taux-occupation (visiteurs-dans / capacity) * 100
+
     if visiteurs-dans > 0 [
       let temps-total 0
       ask people with [current-attraction = patch-attraction and dans-file?] [
@@ -340,7 +384,7 @@ to afficher-labels-attractions
     if afficher-labels? [
       let info-label (word
         "Pop: " (precision popularite 1) "\n"
-        "Occ: " visiteurs-dans "/" capacite-attraction " (" (precision taux-occupation 0) "%)\n"
+        "Occ: " visiteurs-dans "/" capacity " (" (precision taux-occupation 0) "%)\n"
         "Queue: " visiteurs-en-queue "\n"
         "Temps: " (precision temps-moyen-restant 1)
       )
