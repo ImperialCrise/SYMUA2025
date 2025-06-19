@@ -17,9 +17,6 @@ people-own [
   duree-attraction
 ]
 
-<<<<<<< HEAD
-breed [attractions attraction]
-
 attractions-own [
   :; This class represents an attraction in the park and has the following fields
   :;
@@ -32,7 +29,6 @@ attractions-own [
   capacity
 
   popularite
-  capacite-attraction
   visiteurs-dans
   visiteurs-en-queue
   temps-moyen-restant
@@ -148,12 +144,11 @@ to spawn-attraction [x y]
     sprout-attractions 1 [
       set wait-time random 10
       set tags n-of (1 + random 2) attraction_tags
-      set capacity 10 + random 20
+      set capacity 20 + random 30
       set shape "house"
       set color yellow
 
       set popularite random-float 10.0
-      set capacite-attraction 20 + random 30
       set visiteurs-dans []
       set visiteurs-en-queue 0
       set temps-moyen-restant 0
@@ -336,7 +331,7 @@ to go
       ]
     ]
     ]
-  
+
   mettre-a-jour-stats-attractions
   if afficher-labels? [
     afficher-labels-attractions
@@ -367,13 +362,13 @@ to mettre-a-jour-stats-attractions
     let patch-attraction patch-here
     let visiteurs-dans-attraction count people with [current-attraction = patch-attraction and dans-file?]
         set visiteurs-dans visiteurs-dans-attraction
-    
+
     let attraction-id [id-attraction] of patch-here
     let queues-attraction patches with [type-patch = "queue" and id-attraction = attraction-id]
         set visiteurs-en-queue sum [count people-here] of queues-attraction
-    
-        set taux-occupation (visiteurs-dans / capacite-attraction) * 100
-    
+
+        set taux-occupation (visiteurs-dans / capacity) * 100
+
     if visiteurs-dans > 0 [
       let temps-total 0
       ask people with [current-attraction = patch-attraction and dans-file?] [
@@ -389,7 +384,7 @@ to afficher-labels-attractions
     if afficher-labels? [
       let info-label (word
         "Pop: " (precision popularite 1) "\n"
-        "Occ: " visiteurs-dans "/" capacite-attraction " (" (precision taux-occupation 0) "%)\n"
+        "Occ: " visiteurs-dans "/" capacity " (" (precision taux-occupation 0) "%)\n"
         "Queue: " visiteurs-en-queue "\n"
         "Temps: " (precision temps-moyen-restant 1)
       )
