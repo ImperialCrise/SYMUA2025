@@ -48,6 +48,9 @@ globals [
   nb-total-sortis
   attraction_tags ;;
   afficher-labels?
+  ; probabilite-spawn-groupe
+  ; vitesse-arrivee
+  ; vitesse-depart
 ]
 
 
@@ -61,10 +64,17 @@ to setup
 
   set afficher-labels? false
 
+  set probabilite-spawn-groupe 0.1
+  set vitesse-arrivee 5
+  set vitesse-depart 5
+
   if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
   if not is-number? capacite-queue [ set capacite-queue 10 ]
   if not is-number? seed-random [ set seed-random 0 ]
   if not is-number? vitesse [ set vitesse 10 ]
+  if not is-number? probabilite-spawn-groupe [ set probabilite-spawn-groupe 0.1 ]
+  if not is-number? vitesse-arrivee [ set vitesse-arrivee 5 ]
+  if not is-number? vitesse-depart [ set vitesse-depart 5 ]
   random-seed seed-random
   load-map
   reset-ticks
@@ -163,25 +173,28 @@ end
 
 to spawn-people
   if is-agentset? entree-patches and any? entree-patches [
-    repeat nb-visiteurs [
-      ask one-of entree-patches [
-        sprout-people 1 [
-          set age random 60 + 10
-          set en-famille one-of [true false]
-          set preferred-genre one-of attraction_tags
-          set current-attraction nobody
-          set path []
-          set satisfaction 100
-          set is-leaving false
-          set color ifelse-value (en-famille) [ blue ] [ red ]
-          set destination nobody
-          set dans-file? false
-          set temps-attente 0
-          set duree-attraction 0
-          set shape "person"
-          set size 1.2
-          set nb-total-entres nb-total-entres + 1
-          choose-new-destination
+    if random-float 1.0 < probabilite-spawn-groupe [
+      let new-people-count (1 + random floor(vitesse-arrivee))
+      repeat new-people-count [
+        ask one-of entree-patches [
+          sprout-people 1 [
+            set age random 60 + 10
+            set en-famille one-of [true false]
+            set preferred-genre one-of attraction_tags
+            set current-attraction nobody
+            set path []
+            set satisfaction 100
+            set is-leaving false
+            set color ifelse-value (en-famille) [ blue ] [ red ]
+            set destination nobody
+            set dans-file? false
+            set temps-attente 0
+            set duree-attraction 0
+            set shape "person"
+            set size 1.2
+            set nb-total-entres nb-total-entres + 1
+            choose-new-destination
+          ]
         ]
       ]
     ]
@@ -296,24 +309,39 @@ to avancer-case
     stop
   ]
 
+  ifelse is-leaving [
+  let steps-to-take floor(vitesse-depart)
+  if steps-to-take < 1 [ set steps-to-take 1 ]
+  repeat steps-to-take [
+    if empty? path [ stop ] ;; instead of break
+    let next-patch item 0 path
+    move-to next-patch
+    set path but-first path
+    if patch-here = destination [
+      if [type-patch] of patch-here = "exit" [
+        set nb-total-sortis nb-total-sortis + 1
+        die
+      ]
+      stop ;; replaces break
+    ]
+  ]
+] [
   let next-patch item 0 path
   move-to next-patch
   set path but-first path
-
   if patch-here = destination [
-    if is-leaving and [type-patch] of patch-here = "exit" [
-      set nb-total-sortis nb-total-sortis + 1
-      die
-    ]
     if [type-patch] of patch-here = "queue" [
       set dans-file? true
       set temps-attente 0
       set path []
     ]
   ]
+]
+
 end
 
 to go
+  spawn-people ;; Ensure there's a chance to spawn new people each tick
   wait (1 / vitesse)
   ask people [
     ifelse not dans-file? [
@@ -431,10 +459,10 @@ ticks
 30.0
 
 BUTTON
-5
-7
-71
-40
+3
+10
+69
+43
 setup
 setup
 NIL
@@ -448,10 +476,10 @@ NIL
 1
 
 BUTTON
-211
-8
-274
-41
+73
+10
+136
+43
 go
 go
 T
@@ -465,27 +493,10 @@ NIL
 1
 
 BUTTON
-74
-8
-205
-41
-spawn-people
-spawn-people
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-277
-8
-360
-41
+139
+10
+227
+43
 labels on/off
 toggle-labels
 NIL
@@ -618,7 +629,7 @@ vitesse
 vitesse
 0.1
 10
-5.0
+10.0
 0.1
 1
 NIL
@@ -634,6 +645,51 @@ capacite-queue
 1
 10
 4.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+217
+177
+250
+probabilite-spawn-groupe
+probabilite-spawn-groupe
+0.0
+1.0
+0.1
+0.01
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+252
+177
+285
+vitesse-arrivee
+vitesse-arrivee
+1
+10
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+5
+287
+177
+320
+vitesse-depart
+vitesse-depart
+1
+10
+5.0
 1
 1
 NIL
@@ -658,6 +714,7 @@ PENS
 "dans attractions" 1.0 0 -2674135 true "" "plot nb-dans-attractions"
 "en parcours" 1.0 0 -13840069 true "" "plot nb-en-parcours"
 "en queue" 1.0 0 -955883 true "" "plot nb-en-queue"
+"total" 1.0 0 -7500403 true "" "plot count people"
 
 @#$#@#$#@
 ## WHAT IS IT?
