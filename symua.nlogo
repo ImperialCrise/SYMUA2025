@@ -81,7 +81,7 @@ to setup
 end
 
 to load-map
-  if not file-exists? "park_ascii.txt" [
+  if not file-exists? "theme_park.txt" [
     user-message "Could not find the map file: park_ascii.txt"
     stop
   ]
@@ -95,8 +95,7 @@ to load-map
 
   let H length lines
   if H = 0 [ user-message "Map file is empty." stop ]
-  let W length (item 0 lines)
-  resize-world 0 (W - 1) 0 (H - 1)
+  resize-world 0 (H - 1) 0 (H - 1)
   set-patch-size 8
   clear-patches
 
@@ -436,20 +435,19 @@ to generate-new-map
   ; or provide an absolute/relative path.
   ; For example, if generate_map.py is in the same directory:
   print "Generating new map..."
-  shell:eval "python ./generate_map.py"
+  print (shell:exec "python" "./generate_map.py")
   ; Check if shell:eval produces an error, though it might not directly
   ; A more robust way would be to check if park_ascii.txt was modified
   print "Map generation script executed."
   load-map
   print "New map loaded."
 end
-
 @#$#@#$#@
 GRAPHICS-WINDOW
 195
 54
-843
-447
+603
+463
 -1
 -1
 8.0
@@ -463,9 +461,9 @@ GRAPHICS-WINDOW
 1
 1
 0
-79
+49
 0
-47
+49
 0
 0
 1
