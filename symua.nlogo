@@ -15,6 +15,7 @@ people-own [
   dans-file?
   temps-attente
   duree-attraction
+  vitesse-agent ;; Vitesse individuelle de l'agent
   past-attractions
 ]
 
@@ -51,7 +52,7 @@ globals [
   afficher-labels?
   ; probabilite-spawn-groupe
   ; vitesse-arrivee
-  ; vitesse-depart
+  ;; vitesse-depart ; Supprimé car la vitesse est maintenant gérée par l'agent
 ]
 
 
@@ -67,7 +68,7 @@ to setup
 
   set probabilite-spawn-groupe 0.1
   set vitesse-arrivee 5
-  set vitesse-depart 5
+  ;; set vitesse-depart 5 ; Supprimé
 
   if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
   if not is-number? capacite-queue [ set capacite-queue 10 ]
@@ -75,7 +76,7 @@ to setup
   if not is-number? vitesse [ set vitesse 10 ]
   if not is-number? probabilite-spawn-groupe [ set probabilite-spawn-groupe 0.1 ]
   if not is-number? vitesse-arrivee [ set vitesse-arrivee 5 ]
-  if not is-number? vitesse-depart [ set vitesse-depart 5 ]
+  ;; if not is-number? vitesse-depart [ set vitesse-depart 5 ] ; Supprimé
   random-seed seed-random
   load-map
   reset-ticks
@@ -194,6 +195,12 @@ to spawn-people
             set size 1.2
             set past-attractions []
             set nb-total-entres nb-total-entres + 1
+            ;; Initialisation de la vitesse de l'agent
+            ifelse en-famille [
+              set vitesse-agent (1 + random-float 1.0) ;; Vitesse plus lente pour les familles (1.0 à 2.0)
+            ] [
+              set vitesse-agent (2 + random-float 2.0) ;; Vitesse plus rapide pour les personnes seules (2.0 à 4.0)
+            ]
             choose-new-destination
           ]
         ]
@@ -331,35 +338,31 @@ to avancer-case
     stop
   ]
 
-  ifelse is-leaving [
-  let steps-to-take floor(vitesse-depart)
+  ;; Utilisation de la vitesse individuelle de l'agent pour le déplacement
+  let steps-to-take floor(vitesse-agent)
   if steps-to-take < 1 [ set steps-to-take 1 ]
+
   repeat steps-to-take [
-    if empty? path [ stop ] ;; instead of break
+    if empty? path [ stop ] ;; Arrête si le chemin est vide
+
     let next-patch item 0 path
     move-to next-patch
     set path but-first path
+
     if patch-here = destination [
-      if [type-patch] of patch-here = "exit" [
+      ifelse [type-patch] of patch-here = "exit" [
         set nb-total-sortis nb-total-sortis + 1
         die
+      ] [
+        if [type-patch] of patch-here = "queue" [
+          set dans-file? true
+          set temps-attente 0
+          set path [] ;; Efface le chemin une fois arrivé à la file
+        ]
       ]
-      stop ;; replaces break
+      stop ;; Arrête le repeat si la destination est atteinte
     ]
   ]
-] [
-  let next-patch item 0 path
-  move-to next-patch
-  set path but-first path
-  if patch-here = destination [
-    if [type-patch] of patch-here = "queue" [
-      set dans-file? true
-      set temps-attente 0
-      set path []
-    ]
-  ]
-]
-
 end
 
 to go
@@ -735,11 +738,11 @@ HORIZONTAL
 
 SLIDER
 5
-287
+252
 177
-320
-vitesse-depart
-vitesse-depart
+285
+vitesse-arrivee
+vitesse-arrivee
 1
 10
 5.0
