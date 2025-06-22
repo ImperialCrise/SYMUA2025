@@ -1,4 +1,4 @@
-extensions [table]
+extensions [table shell]
 
 breed [people person]
 breed [attractions attraction]
@@ -16,6 +16,7 @@ people-own [
   temps-attente
   duree-attraction
   vitesse-agent ;; Vitesse individuelle de l'agent
+  past-attractions
 ]
 
 attractions-own [
@@ -82,7 +83,7 @@ to setup
 end
 
 to load-map
-  if not file-exists? "park_ascii.txt" [
+  if not file-exists? "theme_park.txt" [
     user-message "Could not find the map file: park_ascii.txt"
     stop
   ]
@@ -96,8 +97,7 @@ to load-map
 
   let H length lines
   if H = 0 [ user-message "Map file is empty." stop ]
-  let W length (item 0 lines)
-  resize-world 0 (W - 1) 0 (H - 1)
+  resize-world 0 (H - 1) 0 (H - 1)
   set-patch-size 8
   clear-patches
 
@@ -193,6 +193,7 @@ to spawn-people
             set duree-attraction 0
             set shape "person"
             set size 1.2
+            set past-attractions []
             set nb-total-entres nb-total-entres + 1
             ;; Initialisation de la vitesse de l'agent
             ifelse en-famille [
@@ -208,31 +209,47 @@ to spawn-people
   ]
 end
 
+to-report calculate-score [a v]
+  let nb-done length filter [x -> x = a] [past-attractions] of v
+  let dist 0
+  ask a [
+    set dist distance v
+  ]
+  let w-popularity 0.2
+  let w-nb-done 4
+  let w-dist 0.3
+  let w-nb-en-file 0.5
+  let score (w-popularity * [popularite] of a) + (w-nb-done * nb-done) + (w-dist * dist) + (w-nb-en-file * [visiteurs-en-queue] of a)
+  report score
+end
+
 
 to choose-new-destination
   let visitor self
   if not is-leaving [
-    let preferred-attractions patches with [
-     type-patch = "attraction" and
-      any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ] and
-      any? attractions-here with [
-        member? [preferred-genre] of visitor [tags] of self
-      ]
+    let preferred-attractions attractions with [
+      member? [preferred-genre] of visitor [tags] of self and
+      (empty? [past-attractions] of visitor or self != last [past-attractions] of visitor)
     ]
     let potential-attractions []
-    ifelse not any? preferred-attractions [
+    ifelse any? preferred-attractions [
       set potential-attractions preferred-attractions
     ] [
-      set potential-attractions patches with [type-patch = "attraction" and
-        any? patches with [ type-patch = "queue" and id-attraction = [id-attraction] of myself ] and
-        any? attractions-here with [
-          not member? [preferred-genre] of visitor [tags] of self
-        ]
+      set potential-attractions attractions with [
+        not member? [preferred-genre] of visitor [tags] of self and
+        (empty? [past-attractions] of visitor or self != last [past-attractions] of visitor)
       ]
     ]
 
     if any? potential-attractions [
-      let target-attraction one-of potential-attractions
+      ;;calculate attractions score and sort by the score to get the best one
+      let attraction-scores map [a -> list a (calculate-score a visitor)] sort potential-attractions
+
+      let sorted-pairs sort-by [[a b] -> item 1 b > item 1 a] attraction-scores
+
+      let sorted-attractions map [pair -> item 0 pair] sorted-pairs
+
+      let target-attraction first sorted-attractions
       let potential-queues patches with [
         type-patch = "queue" and
         id-attraction = [id-attraction] of target-attraction and
@@ -280,6 +297,7 @@ to-report find-path [target-patch]
       let temp-patch target-patch
       while [temp-patch != patch-here and temp-patch != nobody] [
         if not table:has-key? path-data (list [pxcor] of temp-patch [pycor] of temp-patch) [
+          print "find-path: euh jsp pk ça arrive ici"
           report []
         ]
         set path-patches fput temp-patch path-patches
@@ -297,6 +315,10 @@ to-report find-path [target-patch]
         ]
       ]
     ]
+  ]
+  print word "path not found" target-patch
+  ask target-patch [
+    set pcolor yellow
   ]
 
   report []
@@ -357,6 +379,7 @@ to go
       if temps-attente >= duree-attraction [
         set satisfaction satisfaction + (random 20 + 10)
         set dans-file? false
+        set past-attractions lput current-attraction past-attractions
         set current-attraction nobody
         set destination nobody
       ]
@@ -433,12 +456,25 @@ to toggle-labels
   set afficher-labels? not afficher-labels?
   afficher-labels-attractions
 end
+
+to generate-new-map
+  ; Ensure the script is executable and in the same directory as the model
+  ; or provide an absolute/relative path.
+  ; For example, if generate_map.py is in the same directory:
+  print "Generating new map..."
+  print (shell:exec "python" "./generate_map.py")
+  ; Check if shell:eval produces an error, though it might not directly
+  ; A more robust way would be to check if park_ascii.txt was modified
+  print "Map generation script executed."
+  load-map
+  print "New map loaded."
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
 195
 54
-843
-447
+603
+463
 -1
 -1
 8.0
@@ -452,9 +488,9 @@ GRAPHICS-WINDOW
 1
 1
 0
-79
+49
 0
-47
+49
 0
 0
 1
@@ -464,7 +500,7 @@ ticks
 BUTTON
 3
 10
-69
+59
 43
 setup
 setup
@@ -479,9 +515,26 @@ NIL
 1
 
 BUTTON
-73
+62
 10
-136
+118
+43
+Gen. Map
+generate-new-map
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+BUTTON
+121
+10
+177
 43
 go
 go
@@ -496,9 +549,9 @@ NIL
 1
 
 BUTTON
-139
+180
 10
-227
+236
 43
 labels on/off
 toggle-labels
