@@ -18,15 +18,16 @@ interface Visitor {
   isFamily: boolean
   preferredGenre: string
   satisfaction: number
-  isInQueue: boolean
-  isWaitingInQueue: boolean // Nouveau état pour différencier file d'attente et attraction
+  state: "moving" | "inQueue" | "riding" | "leaving"
   currentAttraction: number | null
   path: { x: number; y: number }[]
   speed: number
   waitTime: number
   pastAttractions: number[]
-  totalWaitTime: number // Temps total d'attente
-  attractionsVisited: number // Nombre d'attractions visitées
+  totalWaitTime: number
+  attractionsVisited: number
+  timeInTransit: number
+  queuePosition: number // Position dans la queue (0 = plus proche de l'attraction)
 }
 
 interface Attraction {
@@ -50,7 +51,7 @@ interface ParkCell {
 
 interface StatsHistory {
   time: number
-  totalEntered: number
+  totalPresents: number
   inAttractions: number
   inQueues: number
   moving: number
@@ -76,6 +77,7 @@ export default function ThemeParkSimulator() {
   const [isRunning, setIsRunning] = useState(false)
   const [showStats, setShowStats] = useState(false)
   const [statsHistory, setStatsHistory] = useState<StatsHistory[]>([])
+  const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
   const [stats, setStats] = useState({
     totalEntered: 0,
     totalExited: 0,
@@ -95,13 +97,15 @@ export default function ThemeParkSimulator() {
     queueLength: 5,
     numberOfAttractions: 20,
     spawnRate: 0.5, // Densité au maximum
-    speed: 150, // Vitesse au maximum
+    speed: 50, // Réduire de 150 à 50 pour que les visiteurs passent plus de temps en transit
     initialSatisfaction: 50, // Nouveau paramètre
     satisfactionGainPerAttraction: 15, // Nouveau paramètre
     satisfactionLossPerWaitTime: 0.5, // Nouveau paramètre
     satisfactionLossPerCurrentWait: 0.3, // Nouveau paramètre
     satisfactionMin: 10, // Nouveau paramètre - seuil minimum
     satisfactionMax: 90, // Nouveau paramètre - seuil maximum
+    visitorsPerQueueCell: 2, // Nouveau paramètre
+    satisfactionEnabled: true, // Nouveau paramètre
   })
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -430,7 +434,7 @@ export default function ThemeParkSimulator() {
               d2y >= 0 &&
               d2y < height &&
               d2x >= 0 &&
-              d2x < width &&
+              d1x < width &&
               grid[d1y][d1x] === ROAD &&
               grid[d2y][d2x] === ROAD &&
               grid[o1y][o1x] === EMPTY &&
@@ -633,8 +637,11 @@ export default function ThemeParkSimulator() {
   const calculateSatisfaction = (visitor: Visitor): number => {
     let satisfaction = params.initialSatisfaction // Utiliser le paramètre
 
-    // Pénalité pour le temps d'attente total
+    // Pénalité pour le temps d'attente total (incluant transit)
     satisfaction -= visitor.totalWaitTime * params.satisfactionLossPerWaitTime
+
+    // Pénalité pour le temps en transit vers l'attraction actuelle
+    satisfaction -= visitor.timeInTransit * (params.satisfactionLossPerWaitTime * 0.3) // Moins pénalisant qu'en file
 
     // Bonus pour les attractions visitées
     satisfaction += visitor.attractionsVisited * params.satisfactionGainPerAttraction
@@ -648,7 +655,7 @@ export default function ThemeParkSimulator() {
     }
 
     // Pénalité si en attente actuellement
-    if (visitor.isWaitingInQueue || visitor.isInQueue) {
+    if (visitor.state === "inQueue" || visitor.state === "riding") {
       satisfaction -= visitor.waitTime * params.satisfactionLossPerCurrentWait
     }
 
@@ -683,9 +690,8 @@ export default function ThemeParkSimulator() {
           age: Math.floor(Math.random() * 50) + 10,
           isFamily,
           preferredGenre: ATTRACTION_TAGS[Math.floor(Math.random() * ATTRACTION_TAGS.length)],
-          satisfaction: params.initialSatisfaction, // Utiliser le paramètre
-          isInQueue: false,
-          isWaitingInQueue: false, // Nouveau état
+          satisfaction: params.initialSatisfaction,
+          state: "moving",
           currentAttraction: null,
           path: [],
           speed: isFamily ? 1 + Math.random() : 2 + Math.random() * 2,
@@ -693,7 +699,102 @@ export default function ThemeParkSimulator() {
           pastAttractions: [],
           totalWaitTime: 0,
           attractionsVisited: 0,
+          timeInTransit: 0,
+          queuePosition: -1, // -1 = pas en queue
         }
+
+        // DISPERSER le visiteur dès le spawn - ROUTES PROCHES DES ENTRÉES
+        const nearbyRoads: { x: number; y: number; distance: number }[] = []
+        
+        // Trouver des routes dans un rayon de 15 cases des entrées (plus sûr)
+        for (let y = 0; y < park.length; y++) {
+          for (let x = 0; x < park[0].length; x++) {
+            if (park[y][x].type === "road") {
+              // Calculer distance à l'entrée la plus proche
+              let minDistanceToEntrance = Infinity
+              for (let ey = 0; ey < park.length; ey++) {
+                for (let ex = 0; ex < park[0].length; ex++) {
+                  if (park[ey][ex].type === "entrance") {
+                    const dist = Math.abs(x - ex) + Math.abs(y - ey)
+                    minDistanceToEntrance = Math.min(minDistanceToEntrance, dist)
+                  }
+                }
+              }
+              
+              // Seulement les routes relativement proches des entrées
+              if (minDistanceToEntrance <= 15) {
+                nearbyRoads.push({ x, y, distance: minDistanceToEntrance })
+              }
+            }
+          }
+        }
+        
+        // Téléporter vers une route proche d'une entrée (plus sûr)
+        if (nearbyRoads.length > 0) {
+          // Favoriser les routes un peu éloignées des entrées (pas trop près = embouteillages)
+          const suitableRoads = nearbyRoads.filter(r => r.distance >= 3 && r.distance <= 10)
+          const targetRoads = suitableRoads.length > 0 ? suitableRoads : nearbyRoads
+          
+          const randomRoad = targetRoads[Math.floor(Math.random() * targetRoads.length)]
+          newVisitor.x = randomRoad.x
+          newVisitor.y = randomRoad.y
+        }
+
+        // Utiliser le système de scoring intelligent dès le spawn
+        if (attractions.length > 0) {
+          const availableAttractions = attractions.filter(
+            (a) => !newVisitor.pastAttractions.includes(a.id)
+          )
+          
+          if (availableAttractions.length > 0) {
+            const scoredAttractions = availableAttractions
+              .map((a) => {
+                const distance = Math.abs(a.x - newVisitor.x) + Math.abs(a.y - newVisitor.y)
+                
+                // Compter les visiteurs qui ciblent déjà cette attraction
+                const visitorsTargeting = 0 // Simplification temporaire
+                
+                // Score de charge (moins il y a de monde, mieux c'est)
+                const loadScore = Math.max(0.1, 1 / (visitorsTargeting + 1))
+                
+                // Score de distance (plus proche = mieux)
+                const distanceScore = Math.max(0.1, 100 / (distance + 1))
+                
+                // Bonus pour les préférences
+                const preferenceBonus = a.tags.includes(newVisitor.preferredGenre) ? 2 : 1
+                
+                // Score final combiné
+                const finalScore = (loadScore * 3 + distanceScore) * preferenceBonus
+                
+                return {
+                  attraction: a,
+                  score: finalScore,
+                  distance,
+                  visitorsTargeting
+                }
+              })
+              .sort((a, b) => b.score - a.score)
+            
+            // Sélection pondérée aléatoire des meilleures attractions
+            const topAttractions = scoredAttractions.slice(0, Math.min(5, scoredAttractions.length))
+            const weights = [0.3, 0.25, 0.2, 0.15, 0.1] // Distribution plus équitable
+            
+            let randomValue = Math.random()
+            let selectedAttraction = topAttractions[0].attraction
+            
+            for (let i = 0; i < topAttractions.length; i++) {
+              if (randomValue < weights[i]) {
+                selectedAttraction = topAttractions[i].attraction
+                break
+              }
+              randomValue -= weights[i]
+            }
+            
+            newVisitor.currentAttraction = selectedAttraction.id
+          }
+        }
+
+
 
         setVisitors((prev) => [...prev, newVisitor])
         setStats((prev) => ({ ...prev, totalEntered: prev.totalEntered + 1 }))
@@ -701,139 +802,485 @@ export default function ThemeParkSimulator() {
     }
   }
 
+  // Nouveau système de queue amélioré
+  const getQueueCellsForAttraction = (attractionId: number): { x: number; y: number }[] => {
+    const queueCells: { x: number; y: number }[] = []
+    const attraction = attractions.find((a) => a.id === attractionId)
+    if (!attraction) return queueCells
+
+    // Trouver toutes les cases de queue pour cette attraction
+    for (let y = 0; y < park.length; y++) {
+      for (let x = 0; x < park[0].length; x++) {
+        if (park[y][x].type === "queue" && park[y][x].attractionId === attractionId) {
+          queueCells.push({ x, y })
+        }
+      }
+    }
+
+    // Trier les cases par distance à l'attraction (plus loin = entrée queue, plus proche = sortie queue)
+    queueCells.sort((a, b) => {
+      const distA = Math.abs(a.x - attraction.x) + Math.abs(a.y - attraction.y)
+      const distB = Math.abs(b.x - attraction.x) + Math.abs(b.y - attraction.y)
+      return distB - distA  // Plus loin en premier
+    })
+
+    return queueCells
+  }
+
+  // Obtenir la prochaine position disponible dans la queue
+  const getNextQueuePosition = (attractionId: number, allVisitors: Visitor[]): { position: number; cell: { x: number; y: number } } | null => {
+    const queueCells = getQueueCellsForAttraction(attractionId)
+    if (queueCells.length === 0) return null
+
+    // Compter les visiteurs par position dans la queue
+    const occupiedPositions = new Set<number>()
+    allVisitors
+      .filter(v => v.currentAttraction === attractionId && v.state === "inQueue")
+      .forEach(v => occupiedPositions.add(v.queuePosition))
+
+    // Trouver la première position libre (en partant de la fin de la queue)
+    for (let position = queueCells.length - 1; position >= 0; position--) {
+      if (!occupiedPositions.has(position)) {
+        return { position, cell: queueCells[position] }
+      }
+    }
+
+    return null // Queue pleine
+  }
+
+  // Faire avancer tous les visiteurs dans une queue
+  const advanceQueueForAttraction = (attractionId: number, allVisitors: Visitor[]): void => {
+    const visitorsInQueue = allVisitors
+      .filter(v => v.currentAttraction === attractionId && v.state === "inQueue")
+      .sort((a, b) => a.queuePosition - b.queuePosition) // Trier par position (0 = devant)
+
+    const queueCells = getQueueCellsForAttraction(attractionId)
+    
+    // Mettre à jour les positions physiques selon la position dans la queue
+    visitorsInQueue.forEach(visitor => {
+      if (visitor.queuePosition >= 0 && visitor.queuePosition < queueCells.length) {
+        const targetCell = queueCells[visitor.queuePosition]
+        visitor.x = targetCell.x
+        visitor.y = targetCell.y
+      }
+    })
+  }
+
   // Mise à jour de la simulation
   const updateSimulation = () => {
     setVisitors((prevVisitors) => {
-      let exitedCount = 0
       const updatedVisitors = prevVisitors.map((visitor) => {
-        // Gestion des visiteurs dans l'attraction
-        if (visitor.isInQueue) {
-          visitor.waitTime++
-          visitor.totalWaitTime++
-          const attraction = attractions.find((a) => a.id === visitor.currentAttraction)
-          if (attraction && visitor.waitTime >= attraction.waitTime) {
-            visitor.isInQueue = false
-            visitor.pastAttractions.push(visitor.currentAttraction!)
+        switch (visitor.state) {
+          case "riding":
+            visitor.waitTime++
+            visitor.totalWaitTime++
+            const attraction = attractions.find((a) => a.id === visitor.currentAttraction)
+            if (attraction && visitor.waitTime >= attraction.waitTime) {
+                          visitor.pastAttractions.push(visitor.currentAttraction!)
             visitor.attractionsVisited++
             visitor.currentAttraction = null
-            visitor.path = []
-            visitor.waitTime = 0
-          }
-        }
-        // Gestion des visiteurs en file d'attente
-        else if (visitor.isWaitingInQueue) {
+              visitor.waitTime = 0
+              visitor.timeInTransit = 0
+              visitor.path = []
+              visitor.queuePosition = -1 // Reset position queue
+              
+              // DÉCISION: Continuer ou quitter le parc (seulement si satisfaction activée)
+              const currentSatisfaction = calculateSatisfaction(visitor)
+              const shouldLeave = params.satisfactionEnabled && (
+                currentSatisfaction <= params.satisfactionMin || // Pas satisfait
+                currentSatisfaction >= params.satisfactionMax    // Très satisfait
+              )
+              
+              if (shouldLeave) {
+                visitor.state = "leaving"
+              } else {
+                visitor.state = "moving"
+              }
+              
+              // IMPORTANT: Téléporter le visiteur vers une route accessible après la sortie
+              const nearbyRoads: { x: number; y: number; distance: number }[] = []
+              
+              // Chercher toutes les routes dans un rayon de 10 cases
+              for (let dy = -10; dy <= 10; dy++) {
+                for (let dx = -10; dx <= 10; dx++) {
+                  const newX = attraction.x + dx
+                  const newY = attraction.y + dy
+                  
+                  if (newX >= 0 && newX < park[0].length && newY >= 0 && newY < park.length) {
+                    if (park[newY][newX].type === "road" || park[newY][newX].type === "entrance") {
+                      const distance = Math.abs(dx) + Math.abs(dy)
+                      nearbyRoads.push({ x: newX, y: newY, distance })
+                    }
+                  }
+                }
+              }
+              
+              // Téléporter vers la route la plus proche
+              if (nearbyRoads.length > 0) {
+                nearbyRoads.sort((a, b) => a.distance - b.distance)
+                visitor.x = nearbyRoads[0].x
+                visitor.y = nearbyRoads[0].y
+              }
+            }
+            break
+
+                    case "inQueue":
           visitor.waitTime++
           visitor.totalWaitTime++
-          const attraction = attractions.find((a) => a.id === visitor.currentAttraction)
-          if (attraction) {
-            // Vérifier si l'attraction a de la place
-            const visitorsInAttraction = prevVisitors.filter(
-              (v) => v.currentAttraction === attraction.id && v.isInQueue,
+            const currentAttraction = attractions.find((a) => a.id === visitor.currentAttraction)
+            if (currentAttraction) {
+              const ridingVisitors = prevVisitors.filter(
+                (v: Visitor) => v.currentAttraction === currentAttraction.id && v.state === "riding"
             ).length
-            if (visitorsInAttraction < attraction.capacity) {
-              // Passer de la file à l'attraction
-              visitor.isWaitingInQueue = false
-              visitor.isInQueue = true
-              visitor.waitTime = 0 // Reset pour le temps dans l'attraction
+
+              // CORRECTION: Vérifier STRICTEMENT la capacité ET la position dans la queue
+              if (ridingVisitors < currentAttraction.capacity && visitor.queuePosition === 0) {
+                visitor.state = "riding"
+              visitor.waitTime = 0
+                visitor.queuePosition = -1 // Plus en queue
+                
+                // Téléporter le visiteur vers l'attraction
+                visitor.x = currentAttraction.x
+                visitor.y = currentAttraction.y
+                
+                // Faire avancer tous les autres visiteurs dans cette queue
+                prevVisitors
+                  .filter(v => v.currentAttraction === currentAttraction.id && v.state === "inQueue" && v.id !== visitor.id)
+                  .forEach(v => {
+                    if (v.queuePosition > 0) {
+                      v.queuePosition-- // Avancer d'une position
+                    }
+                  })
+              }
             }
-          }
-        }
-        // Gestion des visiteurs en déplacement
-        else {
-          // Choisir une nouvelle destination si nécessaire
-          if (visitor.path.length === 0 && !visitor.currentAttraction) {
-            const availableAttractions = attractions.filter(
-              (a) =>
-                !visitor.pastAttractions.includes(a.id) &&
-                (a.tags.includes(visitor.preferredGenre) || Math.random() < 0.3),
-            )
+            break
 
-            if (availableAttractions.length > 0) {
-              const targetAttraction = availableAttractions[Math.floor(Math.random() * availableAttractions.length)]
-
-              // Trouver une case de queue pour cette attraction
+          case "leaving":
+            // Chercher l'entrée la plus proche pour sortir du parc
+            if (visitor.path.length === 0) {
+              const entrances: { x: number; y: number; distance: number }[] = []
+              
               for (let y = 0; y < park.length; y++) {
                 for (let x = 0; x < park[0].length; x++) {
-                  if (park[y][x].type === "queue" && park[y][x].attractionId === targetAttraction.id) {
-                    const path = findPath({ x: visitor.x, y: visitor.y }, { x, y })
+                  if (park[y][x].type === "entrance") {
+                    const distance = Math.abs(visitor.x - x) + Math.abs(visitor.y - y)
+                    entrances.push({ x, y, distance })
+                  }
+                }
+              }
+              
+              if (entrances.length > 0) {
+                // Prendre l'entrée la plus proche
+                entrances.sort((a, b) => a.distance - b.distance)
+                const targetExit = entrances[0]
+                const path = findPath({ x: visitor.x, y: visitor.y }, targetExit)
+                if (path.length > 0) {
+                  visitor.path = path
+                }
+              }
+            }
+            
+            // Se déplacer vers la sortie
+            if (visitor.path.length > 0) {
+              const stepsToTake = Math.floor(visitor.speed)
+              for (let i = 0; i < stepsToTake && visitor.path.length > 0; i++) {
+                const nextPos = visitor.path.shift()!
+                visitor.x = nextPos.x
+                visitor.y = nextPos.y
+              }
+              
+              // Si arrivé à l'entrée, le visiteur sort du parc
+              if (visitor.path.length === 0 && park[visitor.y][visitor.x].type === "entrance") {
+                // Marquer pour suppression et désélectionner si c'est l'agent sélectionné
+                visitor.satisfaction = -1 // Marquer pour suppression
+                if (selectedAgentId === visitor.id) {
+                  setSelectedAgentId(null)
+                }
+              }
+            }
+            break
+
+          default:
+          case "moving":
+            if (visitor.currentAttraction) {
+              visitor.timeInTransit++
+              visitor.totalWaitTime++
+            }
+
+            if (!visitor.currentAttraction) {
+              visitor.timeInTransit++ // Compteur pour le temps sans cible
+              
+              // D'abord essayer les attractions non visitées
+              let availableAttractions = attractions.filter(
+                (a) => !visitor.pastAttractions.includes(a.id)
+              )
+              
+              // DEBUG: Log si agent reste jaune trop longtemps
+              if (visitor.timeInTransit > 15) {
+                console.log(`Agent ${visitor.id} jaune depuis ${visitor.timeInTransit} ticks:`, {
+                  totalAttractions: attractions.length,
+                  availableAttractions: availableAttractions.length,
+                  pastAttractions: visitor.pastAttractions,
+                  position: { x: visitor.x, y: visitor.y },
+                  attractionsList: attractions.map(a => ({ id: a.id, x: a.x, y: a.y })),
+                  availableList: availableAttractions.map(a => a.id)
+                })
+              }
+              
+              // Si toutes les attractions ont été visitées, permettre de revisiter (sauf la dernière)
+              if (availableAttractions.length === 0) {
+                const lastVisited = visitor.pastAttractions[visitor.pastAttractions.length - 1]
+                availableAttractions = attractions.filter((a) => a.id !== lastVisited)
+                
+                // Reset la liste des attractions visitées pour éviter l'accumulation
+                if (visitor.pastAttractions.length > 3) {
+                  visitor.pastAttractions = visitor.pastAttractions.slice(-2) // Garder seulement les 2 dernières
+                }
+              }
+              
+              // Si toujours aucune attraction ET que l'agent est bloqué depuis un moment
+              if (availableAttractions.length === 0 && visitor.timeInTransit > 5) {
+                // FORCER la revisite de toutes les attractions
+                availableAttractions = attractions
+                visitor.pastAttractions = [] // Reset complet
+              }
+              
+              if (availableAttractions.length > 0) {
+                // DEBUG: Log AVANT assignation
+                const debugThis = visitor.timeInTransit > 15
+                if (debugThis) {
+                  console.log(`Agent ${visitor.id} va essayer d'assigner une attraction, timeInTransit: ${visitor.timeInTransit}`)
+                }
+                
+                // SIMPLIFIER: Prendre une attraction aléatoire pour éviter les bugs complexes
+                const selectedAttraction = availableAttractions[Math.floor(Math.random() * availableAttractions.length)]
+                
+                visitor.currentAttraction = selectedAttraction.id
+                
+                // DEBUG: Log l'assignation
+                if (debugThis) {
+                  console.log(`Agent ${visitor.id} assigné à attraction ${selectedAttraction.id}`)
+                }
+                
+                // IMMÉDIATEMENT calculer un chemin vers la nouvelle cible
+                const queueCells = getQueueCellsForAttraction(selectedAttraction.id)
+                if (queueCells.length > 0) {
+                  const targetCell = queueCells[0]
+                  const path = findPath({ x: visitor.x, y: visitor.y }, targetCell)
+                  if (path.length > 0) {
+                    visitor.path = path
+                    visitor.timeInTransit = 0 // Reset seulement si succès
+                  } else {
+                    // DEBUG: Pathfinding failed
+                    if (debugThis) {
+                      console.log(`Agent ${visitor.id} ne peut pas atteindre attraction ${selectedAttraction.id}, reset target`)
+                    }
+                    visitor.currentAttraction = null // Reset la cible si pas de chemin
+                  }
+                } else {
+                  // DEBUG: No queue cells
+                  if (debugThis) {
+                    console.log(`Agent ${visitor.id} : attraction ${selectedAttraction.id} n'a pas de queue`)
+                  }
+                  visitor.currentAttraction = null // Pas de queue = pas d'attraction valide
+                }
+              } else {
+                // SECOURS ULTIME : Si vraiment aucune attraction trouvée après 10 ticks
+                if (visitor.timeInTransit > 10 && attractions.length > 0) {
+                  console.log(`Agent ${visitor.id}: SECOURS ULTIME activé`)
+                  const randomAttraction = attractions[Math.floor(Math.random() * attractions.length)]
+                  visitor.currentAttraction = randomAttraction.id
+                  visitor.pastAttractions = [] // Reset complet pour permettre de revisiter
+                  
+                  // Essayer de calculer un chemin immédiatement
+                  const queueCells = getQueueCellsForAttraction(randomAttraction.id)
+                  if (queueCells.length > 0) {
+                    const targetCell = queueCells[0]
+                    const path = findPath({ x: visitor.x, y: visitor.y }, targetCell)
                     if (path.length > 0) {
                       visitor.path = path
-                      visitor.currentAttraction = targetAttraction.id
-                      break
+                      visitor.timeInTransit = 0
+                      console.log(`Agent ${visitor.id}: Secours réussi vers attraction ${randomAttraction.id}`)
+                    } else {
+                      console.log(`Agent ${visitor.id}: Secours échoué - pas de chemin vers ${randomAttraction.id}`)
+                      visitor.currentAttraction = null
+                    }
+                  } else {
+                    console.log(`Agent ${visitor.id}: Secours échoué - pas de queue pour ${randomAttraction.id}`)
+                    visitor.currentAttraction = null
+                  }
+                }
+              }
+            }
+
+            // Cette logique est maintenant gérée dans le système de récupération plus bas
+
+            if (visitor.path.length > 0) {
+              const stepsToTake = Math.floor(visitor.speed)
+              for (let i = 0; i < stepsToTake && visitor.path.length > 0; i++) {
+                const nextPos = visitor.path.shift()!
+                visitor.x = nextPos.x
+                visitor.y = nextPos.y
+
+                                // Si arrivé à la fin du chemin et sur une case de queue
+                if (visitor.path.length === 0 && park[visitor.y][visitor.x].type === "queue" && visitor.currentAttraction) {
+                  const attraction = attractions.find(a => a.id === visitor.currentAttraction)
+                  if (attraction) {
+                    const ridingVisitors = prevVisitors.filter(
+                      (v: Visitor) => v.currentAttraction === attraction.id && v.state === "riding"
+                    ).length
+                    
+                    // FORCER l'entrée en queue même si l'attraction a de la place
+                    // Cela garantit l'ordre d'arrivée et évite les dépassements
+                    const queuePosition = getNextQueuePosition(visitor.currentAttraction, prevVisitors)
+                    
+                    if (queuePosition) {
+                      visitor.state = "inQueue"
+                      visitor.waitTime = 0
+                      visitor.timeInTransit = 0
+                      visitor.queuePosition = queuePosition.position
+                      visitor.x = queuePosition.cell.x
+                      visitor.y = queuePosition.cell.y
+                    } else {
+                      // Queue pleine, chercher une autre attraction
+                      visitor.currentAttraction = null
+                      visitor.timeInTransit = 0
                     }
                   }
                 }
               }
             }
-          }
-
-          // Déplacement
-          if (visitor.path.length > 0) {
-            const stepsToTake = Math.floor(visitor.speed)
-            for (let i = 0; i < stepsToTake && visitor.path.length > 0; i++) {
-              const nextPos = visitor.path.shift()!
-              visitor.x = nextPos.x
-              visitor.y = nextPos.y
-
-              // Vérifier si arrivé à la destination (file d'attente)
-              if (visitor.path.length === 0 && park[visitor.y][visitor.x].type === "queue") {
-                visitor.isWaitingInQueue = true // Nouveau : d'abord en file
-                visitor.waitTime = 0
+            
+            // SYSTÈME DE RÉCUPÉRATION : Détecter les agents bloqués
+            if (visitor.state === "moving" && visitor.currentAttraction && visitor.path.length === 0) {
+              // Agent sans chemin vers sa cible = RÉESSAYER LE PATHFINDING
+              const attraction = attractions.find((a) => a.id === visitor.currentAttraction)
+              if (attraction) {
+                const queueCells = getQueueCellsForAttraction(visitor.currentAttraction)
+                if (queueCells.length > 0) {
+                  const targetCell = queueCells[0]
+                  const path = findPath({ x: visitor.x, y: visitor.y }, targetCell)
+                  if (path.length > 0) {
+                    visitor.path = path
+                    visitor.timeInTransit = 0 // Reset le compteur si chemin trouvé
+                  } else {
+                    visitor.timeInTransit++
+                    
+                    // Si bloqué depuis trop longtemps, téléporter vers une entrée
+                    if (visitor.timeInTransit > 30) {
+                      const entrances: { x: number; y: number }[] = []
+                      for (let y = 0; y < park.length; y++) {
+                        for (let x = 0; x < park[0].length; x++) {
+                          if (park[y][x].type === "entrance") {
+                            entrances.push({ x, y })
+                          }
+                        }
+                      }
+                      
+                      if (entrances.length > 0) {
+                        const randomEntrance = entrances[Math.floor(Math.random() * entrances.length)]
+                        visitor.x = randomEntrance.x
+                        visitor.y = randomEntrance.y
+                        visitor.timeInTransit = 0
+                        visitor.path = []
+                        // Garder la même attraction cible, il va essayer de nouveau
+                      }
+                    }
+                  }
+                } else {
+                  // Pas de queue trouvée, changer d'attraction
+                  visitor.currentAttraction = null
+                  visitor.timeInTransit = 0
+                }
               }
             }
-          }
+            break
         }
 
-        // Mettre à jour la satisfaction
-        visitor.satisfaction = calculateSatisfaction(visitor)
+        if (params.satisfactionEnabled) {
+          visitor.satisfaction = calculateSatisfaction(visitor)
+        } else {
+          visitor.satisfaction = params.initialSatisfaction
+        }
 
         return visitor
       })
 
-      // Filtrer les visiteurs qui sortent (satisfaction en dehors des seuils)
-      const remainingVisitors = updatedVisitors.filter((visitor) => {
-        if (visitor.satisfaction <= params.satisfactionMin || visitor.satisfaction >= params.satisfactionMax) {
-          exitedCount++
-          return false
-        }
-        return true
+      // Faire avancer toutes les queues pour maintenir les positions physiques à jour
+      attractions.forEach(attraction => {
+        advanceQueueForAttraction(attraction.id, updatedVisitors)
       })
 
-      // Mettre à jour le compteur de sorties
-      if (exitedCount > 0) {
-        setStats((prev) => ({ ...prev, totalExited: prev.totalExited + exitedCount }))
+      // Vérifier les seuils de satisfaction pour déclencher l'état "leaving"
+      if (params.satisfactionEnabled) {
+        updatedVisitors.forEach(visitor => {
+          if (visitor.state === "moving" && visitor.currentAttraction === null) {
+            const currentSatisfaction = calculateSatisfaction(visitor)
+            if (currentSatisfaction <= params.satisfactionMin || currentSatisfaction >= params.satisfactionMax) {
+              visitor.state = "leaving"
+              visitor.path = [] // Reset le chemin pour qu'il calcule un nouveau chemin vers la sortie
+            }
+          }
+        })
       }
+
+      // Supprimer seulement les visiteurs qui sont sortis du parc (satisfaction === -1)
+      const remainingVisitors = updatedVisitors.filter((visitor) => visitor.satisfaction !== -1)
+
+      // Nettoyer la sélection si l'agent n'existe plus
+      if (selectedAgentId !== null && !remainingVisitors.find(v => v.id === selectedAgentId)) {
+        setSelectedAgentId(null)
+      }
+
+      const inAttractions = remainingVisitors.filter((v) => v.state === "riding").length
+      const inQueues = remainingVisitors.filter((v) => v.state === "inQueue").length
+      const moving = remainingVisitors.filter((v) => v.state === "moving" || v.state === "leaving").length
+      const totalPresents = inAttractions + inQueues + moving
+
+      const averageSatisfaction =
+        remainingVisitors.length > 0
+          ? remainingVisitors.reduce((sum, v) => sum + v.satisfaction, 0) / remainingVisitors.length
+          : 0
+
+      setStats((prev) => ({
+        ...prev,
+        inAttractions,
+        inQueues,
+        moving,
+        totalExited: Math.max(0, prev.totalEntered - totalPresents),
+        averageSatisfaction,
+      }))
+
+      tickRef.current++
+              setStatsHistory((prev) => {
+        const newHistory = [
+          ...prev,
+          {
+            time: tickRef.current,
+            totalPresents,
+            inAttractions,
+            inQueues,
+            moving,
+            averageSatisfaction,
+            satisfactionMin: params.satisfactionMin,
+            satisfactionMax: params.satisfactionMax,
+          },
+        ]
+        return newHistory.slice(-100)
+      })
 
       return remainingVisitors
     })
 
-    // Corriger les statistiques - maintenant avec les bons états
-    const inAttractions = visitors.filter((v) => v.isInQueue).length // Dans l'attraction
-    const inQueues = visitors.filter((v) => v.isWaitingInQueue).length // En file d'attente
-    const moving = visitors.filter((v) => v.path.length > 0).length // En déplacement
-
-    // Calculer la satisfaction moyenne
-    const averageSatisfaction =
-      visitors.length > 0 ? visitors.reduce((sum, v) => sum + v.satisfaction, 0) / visitors.length : 0
-
-    setStats((prev) => ({
-      ...prev,
-      inAttractions,
-      inQueues,
-      moving,
-      averageSatisfaction,
-    }))
-
-    // Mettre à jour les statistiques des attractions
     setAttractions((prevAttractions) => {
       return prevAttractions.map((attraction) => {
         const visitorsInQueue = visitors.filter(
-          (v) => v.currentAttraction === attraction.id && v.isWaitingInQueue,
+          (v) => v.currentAttraction === attraction.id && v.state === "inQueue"
         ).length
-        const visitorsInside = visitors.filter((v) => v.currentAttraction === attraction.id && v.isInQueue).length
+        const visitorsInside = visitors.filter((v) => v.currentAttraction === attraction.id && v.state === "riding").length
 
         let averageRemainingTime = 0
-        const visitorsInsideList = visitors.filter((v) => v.currentAttraction === attraction.id && v.isInQueue)
+        const visitorsInsideList = visitors.filter((v) => v.currentAttraction === attraction.id && v.state === "riding")
         if (visitorsInsideList.length > 0) {
           const totalRemainingTime = visitorsInsideList.reduce((sum, v) => sum + (attraction.waitTime - v.waitTime), 0)
           averageRemainingTime = totalRemainingTime / visitorsInsideList.length
@@ -847,25 +1294,6 @@ export default function ThemeParkSimulator() {
           averageRemainingTime,
         }
       })
-    })
-
-    // Ajouter aux statistiques historiques
-    tickRef.current++
-    setStatsHistory((prev) => {
-      const newHistory = [
-        ...prev,
-        {
-          time: tickRef.current,
-          totalEntered: stats.totalEntered,
-          inAttractions,
-          inQueues,
-          moving,
-          averageSatisfaction,
-          satisfactionMin: params.satisfactionMin,
-          satisfactionMax: params.satisfactionMax,
-        },
-      ]
-      return newHistory.slice(-100)
     })
   }
 
@@ -887,14 +1315,48 @@ export default function ThemeParkSimulator() {
         clearInterval(intervalRef.current)
       }
     }
-  }, [isRunning, params.speed, park, attractions])
+  }, [isRunning, params.speed, park, attractions, visitors])
 
   // Initialisation
   useEffect(() => {
     generatePark()
   }, [])
 
-  const getCellColor = (cell: ParkCell): string => {
+  // Fonction pour déterminer la couleur de debug des visiteurs
+  const getVisitorDebugColor = (visitor: Visitor): string => {
+    // Priorité 1: État "riding", "inQueue" ou "leaving"
+    if (visitor.state === "riding") {
+      return "#9333ea" // Violet - en attraction
+    }
+    if (visitor.state === "inQueue") {
+      return "#0ea5e9" // Bleu ciel - en file
+    }
+    if (visitor.state === "leaving") {
+      return "#dc2626" // Rouge foncé - quitte le parc
+    }
+    
+    // Priorité 2: Problèmes de pathfinding
+    if (visitor.state === "moving") {
+      if (!visitor.currentAttraction) {
+        // Distinguer: pas de cible disponible vs en train de chercher
+        const hasVisitedAll = visitor.pastAttractions.length >= attractions.length
+        return hasVisitedAll ? "#f59e0b" : "#facc15" // Orange si toutes visitées, jaune si en recherche
+      }
+      if (visitor.path.length === 0) {
+        return "#ef4444" // Rouge - bloqué (pas de chemin)
+      }
+      if (visitor.timeInTransit > 20) {
+        return "#ec4899" // Rose - bloqué depuis longtemps
+      }
+      // Vert - tout va bien, en mouvement
+      return visitor.isFamily ? "#059669" : "#16a34a"
+    }
+    
+    // Fallback
+    return visitor.isFamily ? "#3182ce" : "#e53e3e"
+  }
+
+  const getCellColor = (cell: ParkCell, x: number, y: number): string => {
     switch (cell.type) {
       case "wall":
         return "#2d3748"
@@ -906,7 +1368,7 @@ export default function ThemeParkSimulator() {
         if (cell.attractionId !== undefined) {
           const attraction = attractions.find((a) => a.id === cell.attractionId)
           const visitorsInAttraction = visitors.filter(
-            (v) => v.currentAttraction === attraction?.id && v.isInQueue,
+            (v) => v.currentAttraction === attraction?.id && v.state === "riding",
           ).length
           if (visitorsInAttraction > 0) {
             return "#dc2626" // Rouge si des visiteurs sont dans l'attraction
@@ -917,11 +1379,16 @@ export default function ThemeParkSimulator() {
         return "#ed8936"
       case "queue":
         if (cell.attractionId !== undefined) {
-          const visitorsInQueue = visitors.filter(
-            (v) => v.currentAttraction === cell.attractionId && v.isWaitingInQueue,
+          // Compter les visiteurs physiquement présents sur cette case
+          const visitorsOnThisCell = visitors.filter(
+            (v) => v.x === x && v.y === y && v.state === "inQueue"
           ).length
-          if (visitorsInQueue > 0) {
-            return "#3b82f6" // Bleu si des visiteurs sont en file
+          
+          if (visitorsOnThisCell > 0) {
+            // Gradient selon le nombre de visiteurs sur la case
+            const intensity = Math.min(visitorsOnThisCell / params.visitorsPerQueueCell, 1)
+            const blue = Math.floor(59 + (130 * intensity)) // De 59 à 189
+            return `rgb(59, ${blue}, 246)` // Bleu plus intense selon l'occupation
           }
         }
         return "#e2e8f0"
@@ -940,15 +1407,15 @@ export default function ThemeParkSimulator() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* Overlay sans flou */}
+      {/* Overlay avec flou */}
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
 
       {/* Contenu principal */}
-      <div className="relative z-10 max-w-7xl mx-auto">
+      <div className="relative z-10 max-w-none mx-4">
         <h1 className="text-4xl font-bold text-center mb-8 text-gray-800">Simulateur de Parc d'Attractions</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Contrôles */}
+          {/* Contrôles et légende */}
           <div className="lg:col-span-1 space-y-4">
             <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
@@ -1109,6 +1576,20 @@ export default function ThemeParkSimulator() {
                           className="mt-1"
                         />
                       </div>
+
+                      <div>
+                        <label className="text-sm font-medium">
+                          Visiteurs par Case Queue: {params.visitorsPerQueueCell}
+                        </label>
+                        <Slider
+                          value={[params.visitorsPerQueueCell]}
+                          onValueChange={([value]) => setParams((prev) => ({ ...prev, visitorsPerQueueCell: value }))}
+                          min={1}
+                          max={5}
+                          step={1}
+                          className="mt-1"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -1146,8 +1627,14 @@ export default function ThemeParkSimulator() {
 
                   {/* Catégorie: Satisfaction (fusionnée) */}
                   <div className="border rounded-lg p-3 bg-yellow-50">
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Satisfaction</h3>
-                    <div className="space-y-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-gray-700">Satisfaction</h3>
+                      <Switch
+                        checked={params.satisfactionEnabled}
+                        onCheckedChange={(value) => setParams((prev) => ({ ...prev, satisfactionEnabled: value }))}
+                      />
+                    </div>
+                    <div className={`space-y-3 ${!params.satisfactionEnabled ? "opacity-50 pointer-events-none" : ""}`}>
                       <div>
                         <label className="text-sm font-medium">
                           Satisfaction Initiale: {params.initialSatisfaction}%
@@ -1178,21 +1665,21 @@ export default function ThemeParkSimulator() {
                         />
                       </div>
 
-                      <div>
-                        <label className="text-sm font-medium">
-                          Perte par Attente: -{params.satisfactionLossPerWaitTime.toFixed(1)}
-                        </label>
-                        <Slider
-                          value={[params.satisfactionLossPerWaitTime]}
-                          onValueChange={([value]) =>
-                            setParams((prev) => ({ ...prev, satisfactionLossPerWaitTime: value }))
-                          }
-                          min={0.1}
-                          max={5.0}
-                          step={0.1}
-                          className="mt-1"
-                        />
-                      </div>
+                                              <div>
+                          <label className="text-sm font-medium">
+                            Perte par Attente: -{params.satisfactionLossPerWaitTime.toFixed(1)}
+                          </label>
+                          <Slider
+                            value={[params.satisfactionLossPerWaitTime]}
+                            onValueChange={([value]) =>
+                              setParams((prev) => ({ ...prev, satisfactionLossPerWaitTime: value }))
+                            }
+                            min={0.0}
+                            max={5.0}
+                            step={0.1}
+                            className="mt-1"
+                          />
+                        </div>
 
                       <div>
                         <label className="text-sm font-medium">Seuil Min (sortie): {params.satisfactionMin}%</label>
@@ -1206,96 +1693,120 @@ export default function ThemeParkSimulator() {
                         />
                       </div>
 
-                      <div>
-                        <label className="text-sm font-medium">Seuil Max (sortie): {params.satisfactionMax}%</label>
-                        <Slider
-                          value={[params.satisfactionMax]}
-                          onValueChange={([value]) => setParams((prev) => ({ ...prev, satisfactionMax: value }))}
-                          min={50}
-                          max={100}
-                          step={5}
-                          className="mt-1"
-                        />
-                      </div>
+                                              <div>
+                          <label className="text-sm font-medium">Seuil Max (sortie): {params.satisfactionMax}%</label>
+                          <Slider
+                            value={[params.satisfactionMax]}
+                            onValueChange={([value]) => setParams((prev) => ({ ...prev, satisfactionMax: value }))}
+                            min={50}
+                            max={190}
+                            step={5}
+                            className="mt-1"
+                          />
+                        </div>
                     </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
-            {/* Statistiques */}
-            <Card className="bg-white/80 backdrop-blur-md shadow-lg">
-              <CardHeader>
-                <CardTitle>Statistiques</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Total entrés:</span>
-                  <Badge variant="secondary">{stats.totalEntered}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>Total sortis:</span>
-                  <Badge variant="destructive">{stats.totalExited}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>Dans attractions:</span>
-                  <Badge style={{ backgroundColor: "#ed8936", color: "white" }}>{stats.inAttractions}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>En file:</span>
-                  <Badge style={{ backgroundColor: "#3182ce", color: "white" }}>{stats.inQueues}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>En déplacement:</span>
-                  <Badge style={{ backgroundColor: "#e53e3e", color: "white" }}>{stats.moving}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>Total présents:</span>
-                  <Badge variant="outline">{stats.inAttractions + stats.inQueues + stats.moving}</Badge>
-                </div>
-                <div className="flex justify-between">
-                  <span>Satisfaction moy:</span>
-                  <Badge style={{ backgroundColor: "#10b981", color: "white" }}>
-                    {stats.averageSatisfaction.toFixed(1)}%
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
+
           </div>
 
           {/* Visualisation du parc */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-2">
             <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
                 <CardTitle>Parc d'Attractions</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="relative overflow-auto max-h-[600px] border rounded">
+                <div className="relative overflow-auto max-h-[600px] border rounded" id="park-container">
                   <svg width={park[0]?.length * 8 || 0} height={park.length * 8}>
                     {/* Rendu du parc */}
                     {park.map((row, y) =>
                       row.map((cell, x) => (
-                        <rect key={`${x}-${y}`} x={x * 8} y={y * 8} width={8} height={8} fill={getCellColor(cell)} />
+                        <rect key={`${x}-${y}`} x={x * 8} y={y * 8} width={8} height={8} fill={getCellColor(cell, x, y)} />
                       )),
                     )}
 
                     {/* Rendu des visiteurs */}
-                    {visitors.map((visitor) => (
-                      <g key={visitor.id}>
-                        <circle
-                          cx={visitor.x * 8 + 4}
-                          cy={visitor.y * 8 + 4}
-                          r={2}
-                          fill={visitor.isFamily ? "#3182ce" : "#e53e3e"}
-                          opacity={visitor.isInQueue ? 0.5 : 1}
-                        />
-                        {showStats && (
-                          <text x={visitor.x * 8 + 8} y={visitor.y * 8 + 2} fontSize="8" fill="white">
-                            {`Sat:${visitor.satisfaction.toFixed(0)}%`}
-                          </text>
-                        )}
-                      </g>
-                    ))}
+                    {visitors.map((visitor) => {
+                      const isSelected = selectedAgentId === visitor.id
+                      return (
+                        <g key={visitor.id}>
+                          {/* Cercle de surbrillance pour l'agent sélectionné */}
+                          {isSelected && (
+                            <circle
+                              cx={visitor.x * 8 + 4}
+                              cy={visitor.y * 8 + 4}
+                              r={6}
+                              fill="none"
+                              stroke="#ffff00"
+                              strokeWidth={2}
+                              opacity={0.8}
+                            />
+                          )}
+                          
+                          {/* Chemin de l'agent sélectionné */}
+                          {isSelected && visitor.path.length > 0 && (
+                            <g>
+                              {visitor.path.map((point, index) => (
+                                <circle
+                                  key={index}
+                                  cx={point.x * 8 + 4}
+                                  cy={point.y * 8 + 4}
+                                  r={1}
+                                  fill="#ffff00"
+                                  opacity={0.6}
+                                />
+                              ))}
+                              <polyline
+                                points={[
+                                  `${visitor.x * 8 + 4},${visitor.y * 8 + 4}`,
+                                  ...visitor.path.map(p => `${p.x * 8 + 4},${p.y * 8 + 4}`)
+                                ].join(' ')}
+                                fill="none"
+                                stroke="#ffff00"
+                                strokeWidth={1}
+                                opacity={0.5}
+                              />
+                            </g>
+                          )}
+                          
+                          <circle
+                            cx={visitor.x * 8 + 4}
+                            cy={visitor.y * 8 + 4}
+                            r={isSelected ? 3 : 2}
+                            fill={getVisitorDebugColor(visitor)}
+                            opacity={visitor.state === "riding" ? 0.7 : 1}
+                            stroke={visitor.path.length > 0 ? "#ffffff" : "none"}
+                            strokeWidth={isSelected ? 1 : 0.5}
+                            style={{ cursor: 'pointer' }}
+                            onClick={() => setSelectedAgentId(isSelected ? null : visitor.id)}
+                          />
+                          
+                          {/* ID de l'agent sélectionné */}
+                          {isSelected && (
+                            <text 
+                              x={visitor.x * 8 + 4} 
+                              y={visitor.y * 8 - 8} 
+                              fontSize="8" 
+                              fill="#ffff00" 
+                              textAnchor="middle"
+                              fontWeight="bold"
+                            >
+                              #{visitor.id}
+                            </text>
+                          )}
+                          
+                          {showStats && (
+                            <text x={visitor.x * 8 + 8} y={visitor.y * 8 + 2} fontSize="6" fill="black">
+                              {`${visitor.state}|T:${visitor.currentAttraction || "X"}|P:${visitor.path.length}|W:${visitor.timeInTransit}|Past:${visitor.pastAttractions.length}|Q:${visitor.queuePosition}`}
+                            </text>
+                          )}
+                        </g>
+                      )
+                    })}
 
                     {/* Rendu des stats des attractions */}
                     {showStats &&
@@ -1318,7 +1829,7 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
               </CardContent>
             </Card>
 
-            {/* Légende et Graphique */}
+                        {/* Légende, Statistiques et Graphique */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               {/* Légende */}
               <Card className="bg-white/80 backdrop-blur-md shadow-lg">
@@ -1350,10 +1861,98 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                     <div className="w-2 h-2 bg-red-500 rounded-full"></div>
                     <span className="text-sm">Visiteur (solo)</span>
                   </div>
+                  
+                  <div className="border-t pt-2 mt-2">
+                    <div className="text-xs text-gray-600 mb-1">
+                       <strong>Cliquez sur un visiteur</strong> pour le sélectionner et voir ses détails
+                    </div>
+                    {selectedAgentId !== null && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 border-2 border-yellow-400 rounded-full"></div>
+                        <span className="text-xs">Agent #{selectedAgentId} sélectionné</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Debug colors
+                  <div className="border-t pt-2 mt-2">
+                    <h4 className="text-xs font-semibold text-gray-600 mb-2">Debug Visiteurs:</h4>
+                    <div className="grid grid-cols-2 gap-1 text-xs">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-600 rounded-full"></div>
+                        <span>En mouvement OK</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                        <span>Bloqué (pas chemin)</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+                        <span>Cherche attraction</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                        <span>Toutes visitées</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
+                        <span>Bloqué longtemps</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-sky-500 rounded-full"></div>
+                        <span>En file</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
+                        <span>En attraction</span>
+                      </div>
+                    </div>
+                  </div> */}
                 </CardContent>
               </Card>
 
-              {/* Graphique des statistiques avec pagination */}
+              {/* Statistiques */}
+              <Card className="bg-white/80 backdrop-blur-md shadow-lg">
+                <CardHeader>
+                  <CardTitle>Statistiques</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <div className="flex justify-between">
+                    <span>Total entrés:</span>
+                    <Badge variant="secondary">{stats.totalEntered}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total sortis:</span>
+                    <Badge variant="destructive">{stats.totalExited}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Dans attractions:</span>
+                    <Badge style={{ backgroundColor: "#ed8936", color: "white" }}>{stats.inAttractions}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>En file:</span>
+                    <Badge style={{ backgroundColor: "#3182ce", color: "white" }}>{stats.inQueues}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>En déplacement:</span>
+                    <Badge style={{ backgroundColor: "#e53e3e", color: "white" }}>{stats.moving}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total présents:</span>
+                    <Badge variant="outline">{stats.inAttractions + stats.inQueues + stats.moving}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Satisfaction moy:</span>
+                    <Badge style={{ backgroundColor: "#10b981", color: "white" }}>
+                      {stats.averageSatisfaction.toFixed(1)}%
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Graphique */}
+            <div className="mt-4">
               <Card className="bg-white/80 backdrop-blur-md shadow-lg">
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -1381,7 +1980,7 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                           <YAxis />
                           <Tooltip />
                           <Legend />
-                          <Line type="monotone" dataKey="totalEntered" stroke="#48bb78" name="Total entrés" />
+                          <Line type="monotone" dataKey="totalPresents" stroke="#48bb78" name="Total présents" />
                           <Line type="monotone" dataKey="inAttractions" stroke="#ed8936" name="Dans attractions" />
                           <Line type="monotone" dataKey="inQueues" stroke="#3182ce" name="En file" />
                           <Line type="monotone" dataKey="moving" stroke="#e53e3e" name="En déplacement" />
@@ -1422,6 +2021,149 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          {/* Sélection et Détails Agent */}
+          <div className="lg:col-span-1 space-y-4">
+            {/* Bouton sélection agent aléatoire */}
+            <Card className="bg-white/80 backdrop-blur-md shadow-lg">
+              <CardHeader>
+                <CardTitle>Sélection Agent</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={() => {
+                    if (visitors.length > 0) {
+                      const randomVisitor = visitors[Math.floor(Math.random() * visitors.length)]
+                      setSelectedAgentId(randomVisitor.id)
+                      
+                      // Centrer automatiquement sur l'agent
+                      setTimeout(() => {
+                        const container = document.getElementById('park-container')
+                        if (container) {
+                          const agentX = randomVisitor.x * 8
+                          const agentY = randomVisitor.y * 8
+                          container.scrollTo({
+                            left: agentX - container.clientWidth / 2,
+                            top: agentY - container.clientHeight / 2,
+                            behavior: 'smooth'
+                          })
+                        }
+                      }, 100)
+                    }
+                  }}
+                  className="w-full"
+                  disabled={visitors.length === 0}
+                >
+                  Sélectionner un Agent Aléatoire
+                </Button>
+                
+                {selectedAgentId !== null && (
+                  <Button 
+                    onClick={() => setSelectedAgentId(null)}
+                    variant="outline"
+                    className="w-full mt-2"
+                  >
+                    ❌ Désélectionner
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Détails Agent Sélectionné */}
+            {selectedAgentId !== null && (() => {
+              const selectedAgent = visitors.find(v => v.id === selectedAgentId)
+              if (!selectedAgent) return null
+              
+              const targetAttraction = selectedAgent.currentAttraction 
+                ? attractions.find(a => a.id === selectedAgent.currentAttraction)
+                : null
+
+              return (
+                <Card className="bg-yellow-50/90 backdrop-blur-md shadow-lg border-yellow-300">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span className="text-yellow-800">Agent #{selectedAgent.id}</span>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => {
+                          const container = document.getElementById('park-container')
+                          if (container) {
+                            const agentX = selectedAgent.x * 8
+                            const agentY = selectedAgent.y * 8
+                            container.scrollTo({
+                              left: agentX - container.clientWidth / 2,
+                              top: agentY - container.clientHeight / 2,
+                              behavior: 'smooth'
+                            })
+                          }
+                        }}
+                        className="text-yellow-600 hover:text-yellow-800"
+                        title="Centrer sur l'agent"
+                      >
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="grid grid-cols-1 gap-2">
+                      <div>
+                        <strong>Position:</strong> ({selectedAgent.x}, {selectedAgent.y})
+                      </div>
+                      <div>
+                        <strong>État:</strong> <Badge variant="outline">{selectedAgent.state}</Badge>
+                      </div>
+                      <div>
+                        <strong>Famille:</strong> {selectedAgent.isFamily ? "Oui" : "Non"}
+                      </div>
+                      <div>
+                        <strong>Âge:</strong> {selectedAgent.age}
+                      </div>
+                      <div>
+                        <strong>Genre préféré:</strong> {selectedAgent.preferredGenre}
+                      </div>
+                      <div>
+                        <strong>Vitesse:</strong> {selectedAgent.speed.toFixed(1)}
+                      </div>
+                    </div>
+                    
+                    <div className="border-t pt-2">
+                      <div><strong>Satisfaction:</strong> {selectedAgent.satisfaction.toFixed(1)}%</div>
+                      <div><strong>Temps transit:</strong> {selectedAgent.timeInTransit}</div>
+                      <div><strong>Temps attente total:</strong> {selectedAgent.totalWaitTime}</div>
+                      <div><strong>Attractions visitées:</strong> {selectedAgent.attractionsVisited}</div>
+                    </div>
+
+                    <div className="border-t pt-2">
+                      <div><strong>Cible actuelle:</strong> {
+                        targetAttraction 
+                          ? `${targetAttraction.id} (${targetAttraction.tags.join(', ')})` 
+                          : "Aucune"
+                      }</div>
+                      <div><strong>Chemin restant:</strong> {selectedAgent.path.length} cases</div>
+                      <div><strong>Position queue:</strong> {
+                        selectedAgent.queuePosition >= 0 
+                          ? `Position ${selectedAgent.queuePosition}` 
+                          : "Pas en queue"
+                      }</div>
+                    </div>
+
+                    {selectedAgent.pastAttractions.length > 0 && (
+                      <div className="border-t pt-2">
+                        <strong>Historique:</strong>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {selectedAgent.pastAttractions.map(id => (
+                            <Badge key={id} variant="secondary" className="text-xs">
+                              {id}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )
+            })()}
           </div>
         </div>
       </div>
