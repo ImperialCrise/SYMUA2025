@@ -28,7 +28,7 @@ jobs:
 
       - name: Install dependencies 🔧
         shell: bash
-        run: cd attraction/ && npm install --legacy-peer-deps
+        run: cd ./nextjs/ && npm install --legacy-peer-deps
   
       - name: Setup Pages ⚙️
         uses: actions/configure-pages@v4
@@ -36,12 +36,12 @@ jobs:
           static_site_generator: next
 
       - name: Build with Next.js 🏗️
-        run: cd attraction/ && npx next build
+        run: cd ./nextjs/ && npx next build
 
       - name: Upload artifact 📡
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./attraction/out
+          path: ./nextjs/out
 
   deploy:
     environment:
