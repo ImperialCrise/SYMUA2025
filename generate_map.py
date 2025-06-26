@@ -1,5 +1,6 @@
 import random
 import math
+import sys
 
 WALL = ''
 EMPTY = ' '
@@ -209,7 +210,7 @@ def fix_road_gaps(grid):
                         break
     return additions
 
-def export_to_txt(grid, filename="theme_park.txt"):
+def export_to_txt(grid, filename="park_ascii.txt"):
     with open(filename, "w") as f:
         for row in grid:
             f.write(''.join(row) + '\n')
@@ -228,13 +229,13 @@ def generate_theme_park(width=150, height=50, entries=3, nodes=400, road_width=2
 
 
 
-WIDTH = 150
-HEIGHT = 50
-ENTRIES = 3
-NUMBER_OF_NODES = 400
-ROAD_WIDTH = 2
-QUEUE_LENGTH = 5
-NUMBER_OF_ATTRACTIONS = 20
+WIDTH = int(sys.argv[1])
+HEIGHT = int(sys.argv[2])
+ENTRIES = int(sys.argv[3])
+NUMBER_OF_NODES = int(sys.argv[4])
+ROAD_WIDTH = int(sys.argv[5])
+QUEUE_LENGTH = int(sys.argv[6])
+NUMBER_OF_ATTRACTIONS = int(sys.argv[7])
 
 
 if __name__ == "__main__":
@@ -247,5 +248,8 @@ if __name__ == "__main__":
         QUEUE_LENGTH,
         NUMBER_OF_ATTRACTIONS,
     )
+    print(">> Writing file", flush=True)
     export_to_txt(park, "park_ascii.txt")
-    print("DONE!")
+    print(">> Done writing file", flush=True)
+    print("DONE", flush=True)
+

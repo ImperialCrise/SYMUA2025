@@ -1,4 +1,5 @@
-extensions [table shell]
+extensions [table shell py]
+
 
 breed [people person]
 breed [attractions attraction]
@@ -83,7 +84,7 @@ to setup
 end
 
 to load-map
-  if not file-exists? "theme_park.txt" [
+  if not file-exists? "park_ascii.txt" [
     user-message "Could not find the map file: park_ascii.txt"
     stop
   ]
@@ -458,23 +459,47 @@ to toggle-labels
 end
 
 to generate-new-map
-  ; Ensure the script is executable and in the same directory as the model
-  ; or provide an absolute/relative path.
-  ; For example, if generate_map.py is in the same directory:
-  print "Generating new map..."
-  print (shell:exec "python" "./generate_map.py")
-  ; Check if shell:eval produces an error, though it might not directly
-  ; A more robust way would be to check if park_ascii.txt was modified
-  print "Map generation script executed."
+  py:setup py:python
+
+  let width map-width
+  let height map-height
+  let nbattraction nb-attractions
+  let entrees nb-entries
+  let nodes nb-nodes
+  let queue queue-len
+  let road road-width
+
+  ;; Construction manuelle de la commande
+  let cmd (word "subprocess.run(["
+  "'C:/Users/GMA_computer/AppData/Local/Programs/Python/Python313/python.exe', "
+  "'generate_map.py', "
+  "\"" width "\", "
+  "\"" height "\", "
+  "\"" entrees "\", "
+  "\"" nodes "\", "
+  "\"" road "\", "
+  "\"" queue "\", "
+  "\"" nbattraction "\", "
+  "], check=True)"
+)
+
+  py:run (word "import subprocess\n" cmd)
+  print cmd
   load-map
-  print "New map loaded."
 end
+
+
+
+
+
+
+
 @#$#@#$#@
 GRAPHICS-WINDOW
-195
-54
-603
-463
+898
+37
+1386
+526
 -1
 -1
 8.0
@@ -488,9 +513,9 @@ GRAPHICS-WINDOW
 1
 1
 0
-49
+59
 0
-49
+59
 0
 0
 1
@@ -596,10 +621,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-828
-54
-944
-99
+3095
+240
+3211
+285
 NIL
 nb-dans-attractions
 17
@@ -607,10 +632,10 @@ nb-dans-attractions
 11
 
 MONITOR
-828
-99
-933
-144
+3095
+285
+3200
+330
 NIL
 nb-en-parcours
 17
@@ -633,10 +658,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-827
-144
-932
-189
+3094
+330
+3199
+375
 NIL
 nb-total-entres
 17
@@ -644,10 +669,10 @@ nb-total-entres
 11
 
 MONITOR
-827
-233
-933
-278
+3094
+419
+3200
+464
 NIL
 nb-total-sortis
 17
@@ -655,10 +680,10 @@ nb-total-sortis
 11
 
 MONITOR
-827
-189
-932
-234
+3094
+375
+3199
+420
 NIL
 count people
 17
@@ -666,10 +691,10 @@ count people
 11
 
 MONITOR
-827
-278
-932
-323
+3094
+464
+3199
+509
 NIL
 nb-en-queue
 17
@@ -736,26 +761,11 @@ vitesse-arrivee
 NIL
 HORIZONTAL
 
-SLIDER
-5
-252
-177
-285
-vitesse-arrivee
-vitesse-arrivee
-1
-10
-5.0
-1
-1
-NIL
-HORIZONTAL
-
 PLOT
-197
-443
-657
-627
+199
+625
+659
+809
 People's states
 NIL
 NIL
@@ -771,6 +781,111 @@ PENS
 "en parcours" 1.0 0 -13840069 true "" "plot nb-en-parcours"
 "en queue" 1.0 0 -955883 true "" "plot nb-en-queue"
 "total" 1.0 0 -7500403 true "" "plot count people"
+
+SLIDER
+0
+406
+172
+439
+map-width
+map-width
+30
+200
+67.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+443
+172
+476
+map-height
+map-height
+30
+100
+60.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+482
+172
+515
+nb-entries
+nb-entries
+1
+10
+3.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+518
+172
+551
+nb-nodes
+nb-nodes
+0
+1000
+439.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+554
+172
+587
+road-width
+road-width
+1
+5
+2.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+592
+172
+625
+queue-len
+queue-len
+1
+10
+5.0
+1
+1
+NIL
+HORIZONTAL
+
+SLIDER
+0
+627
+172
+660
+nb-attractions
+nb-attractions
+1
+100
+20.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
