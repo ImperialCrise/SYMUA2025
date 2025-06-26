@@ -869,7 +869,18 @@ export default function ThemeParkSimulator() {
   // Mise à jour de la simulation
   const updateSimulation = () => {
     setVisitors((prevVisitors) => {
-      const updatedVisitors = prevVisitors.map((visitor) => {
+      // Première passe : supprimer immédiatement les visiteurs en leaving qui sont sur une entrée
+      let filteredVisitors = prevVisitors.filter((visitor) => {
+        if (visitor.state === "leaving" && park[visitor.y] && park[visitor.y][visitor.x] && park[visitor.y][visitor.x].type === "entrance") {
+          if (selectedAgentId === visitor.id) {
+            setSelectedAgentId(null)
+          }
+          return false
+        }
+        return true
+      })
+
+      const updatedVisitors = filteredVisitors.map((visitor) => {
         switch (visitor.state) {
           case "riding":
             visitor.waitTime++
@@ -989,14 +1000,13 @@ export default function ThemeParkSimulator() {
                 visitor.y = nextPos.y
               }
               
-              // Si arrivé à l'entrée, le visiteur sort du parc
-              if (visitor.path.length === 0 && park[visitor.y][visitor.x].type === "entrance") {
-                // Marquer pour suppression et désélectionner si c'est l'agent sélectionné
-                visitor.satisfaction = -1 // Marquer pour suppression
-                if (selectedAgentId === visitor.id) {
-                  setSelectedAgentId(null)
-                }
-              }
+                             // Si arrivé à l'entrée, marquer pour suppression immédiate
+               if (visitor.path.length === 0 && park[visitor.y][visitor.x].type === "entrance") {
+                 visitor.satisfaction = -1
+                 if (selectedAgentId === visitor.id) {
+                   setSelectedAgentId(null)
+                 }
+               }
             }
             break
 
@@ -1224,8 +1234,16 @@ export default function ThemeParkSimulator() {
         })
       }
 
-      // Supprimer seulement les visiteurs qui sont sortis du parc (satisfaction === -1)
-      const remainingVisitors = updatedVisitors.filter((visitor) => visitor.satisfaction !== -1)
+      // Supprimer immédiatement les visiteurs qui sont sortis du parc (satisfaction === -1)
+      const remainingVisitors = updatedVisitors.filter((visitor) => {
+        if (visitor.satisfaction === -1) {
+          if (selectedAgentId === visitor.id) {
+            setSelectedAgentId(null)
+          }
+          return false
+        }
+        return true
+      })
 
       // Nettoyer la sélection si l'agent n'existe plus
       if (selectedAgentId !== null && !remainingVisitors.find(v => v.id === selectedAgentId)) {
