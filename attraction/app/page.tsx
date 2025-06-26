@@ -940,8 +940,8 @@ export default function ThemeParkSimulator() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* Overlay sans flou */}
-      <div className="absolute inset-0 bg-black/10"></div>
+      {/* Overlay avec flou */}
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
 
       {/* Contenu principal */}
       <div className="relative z-10 max-w-7xl mx-auto">
@@ -950,7 +950,7 @@ export default function ThemeParkSimulator() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Contrôles */}
           <div className="lg:col-span-1 space-y-4">
-            <Card>
+            <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Settings className="w-5 h-5" />
@@ -1224,7 +1224,7 @@ export default function ThemeParkSimulator() {
             </Card>
 
             {/* Statistiques */}
-            <Card>
+            <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
                 <CardTitle>Statistiques</CardTitle>
               </CardHeader>
@@ -1265,7 +1265,7 @@ export default function ThemeParkSimulator() {
 
           {/* Visualisation du parc */}
           <div className="lg:col-span-3">
-            <Card>
+            <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
                 <CardTitle>Parc d'Attractions</CardTitle>
               </CardHeader>
@@ -1321,7 +1321,7 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
             {/* Légende et Graphique */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
               {/* Légende */}
-              <Card>
+              <Card className="bg-white/80 backdrop-blur-md shadow-lg">
                 <CardHeader>
                   <CardTitle>Légende</CardTitle>
                 </CardHeader>
@@ -1354,7 +1354,7 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
               </Card>
 
               {/* Graphique des statistiques avec pagination */}
-              <Card>
+              <Card className="bg-white/80 backdrop-blur-md shadow-lg">
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>
