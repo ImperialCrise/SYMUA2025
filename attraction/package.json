@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "npm run build && npx serve@latest out"
   },
   "dependencies": {
     "react": "^18.2.0",
