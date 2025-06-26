@@ -471,7 +471,7 @@ to generate-new-map
 
   ;; Construction manuelle de la commande
   let cmd (word "subprocess.run(["
-  "'C:/Users/GMA_computer/AppData/Local/Programs/Python/Python313/python.exe', "
+  "'python', "
   "'generate_map.py', "
   "\"" width "\", "
   "\"" height "\", "
@@ -493,13 +493,12 @@ end
 
 
 
-
 @#$#@#$#@
 GRAPHICS-WINDOW
-898
-37
-1386
-526
+391
+49
+839
+498
 -1
 -1
 8.0
@@ -513,9 +512,9 @@ GRAPHICS-WINDOW
 1
 1
 0
-59
+54
 0
-59
+54
 0
 0
 1
@@ -784,14 +783,14 @@ PENS
 
 SLIDER
 0
-406
+411
 172
-439
+444
 map-width
 map-width
 30
 200
-67.0
+55.0
 1
 1
 NIL
@@ -806,7 +805,7 @@ map-height
 map-height
 30
 100
-60.0
+55.0
 1
 1
 NIL
