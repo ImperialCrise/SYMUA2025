@@ -1419,7 +1419,7 @@ export default function ThemeParkSimulator() {
     <div
       className="min-h-screen relative p-4"
       style={{
-        backgroundImage: "url(/theme-park-bg.png)",
+        backgroundImage: "url(/SYMUA2025/theme-park-bg.png)",
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
