@@ -1154,19 +1154,57 @@ export default function ThemeParkSimulator() {
                     
                     // FORCER l'entrée en queue même si l'attraction a de la place
                     // Cela garantit l'ordre d'arrivée et évite les dépassements
-                    const queuePosition = getNextQueuePosition(visitor.currentAttraction, prevVisitors)
                     
-                    if (queuePosition) {
-                      visitor.state = "inQueue"
-                      visitor.waitTime = 0
-                      visitor.timeInTransit = 0
-                      visitor.queuePosition = queuePosition.position
-                      visitor.x = queuePosition.cell.x
-                      visitor.y = queuePosition.cell.y
+                    // Vérifier si quelqu'un est déjà en train d'embarquer pour cette attraction
+                    const isSomeoneBoarding = prevVisitors.some(
+                      v => v.currentAttraction === attraction.id && v.queuePosition === 0 && v.boardingTimeRemaining !== undefined && v.boardingTimeRemaining > 0
+                    );
+
+                    if (isSomeoneBoarding) {
+                      // Quelqu'un embarque, le nouvel agent DOIT faire la queue
+                      const queuePosition = getNextQueuePosition(visitor.currentAttraction, prevVisitors);
+                      if (queuePosition) {
+                        visitor.state = "inQueue";
+                        visitor.waitTime = 0;
+                        visitor.timeInTransit = 0;
+                        visitor.queuePosition = queuePosition.position;
+                        visitor.x = queuePosition.cell.x;
+                        visitor.y = queuePosition.cell.y;
+                      } else {
+                        // Queue pleine (même derrière celui qui embarque), chercher une autre attraction
+                        visitor.currentAttraction = null;
+                        visitor.timeInTransit = 0;
+                      }
                     } else {
-                      // Queue pleine, chercher une autre attraction
-                      visitor.currentAttraction = null
-                      visitor.timeInTransit = 0
+                      // Personne n'embarque, ou la file est vide et personne n'est en position 0
+                      // Tenter de prendre la prochaine place ou d'embarquer directement si params.boardingTime === 0
+                      const queuePosition = getNextQueuePosition(visitor.currentAttraction, prevVisitors);
+                      if (queuePosition) {
+                        // Si params.boardingTime > 0 OU si la position obtenue n'est pas 0, entrer en file normale
+                        // OU si la capacité est atteinte.
+                        // Essentiellement, on entre en file sauf si boardingTime est 0 ET la position est 0 ET il y a de la place.
+                        if (params.boardingTime > 0 || queuePosition.position !== 0 || ridingVisitors >= attraction.capacity || attractionsAdmittedThisTick.has(attraction.id)) {
+                           visitor.state = "inQueue";
+                           visitor.waitTime = 0;
+                           visitor.timeInTransit = 0;
+                           visitor.queuePosition = queuePosition.position;
+                           visitor.x = queuePosition.cell.x;
+                           visitor.y = queuePosition.cell.y;
+                        } else { // Cas spécial: boardingTime est 0, file vide (pos 0 dispo), et place dans l'attraction
+                           visitor.state = "riding";
+                           visitor.waitTime = 0;
+                           visitor.timeInTransit = 0;
+                           visitor.queuePosition = -1; // Pas en queue
+                           delete visitor.boardingTimeRemaining;
+                           attractionsAdmittedThisTick.add(attraction.id);
+                           visitor.x = attraction.x;
+                           visitor.y = attraction.y;
+                        }
+                      } else {
+                        // Queue pleine, chercher une autre attraction
+                        visitor.currentAttraction = null;
+                        visitor.timeInTransit = 0;
+                      }
                     }
                   }
                 }
