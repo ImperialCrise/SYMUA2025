@@ -477,7 +477,9 @@ export default function ThemeParkSimulator() {
 
     const allNodes = [...entriesPos, ...internalNodes]
     addPaths(grid, allNodes, roadWidth)
-    connectNearbyRoads(grid, 8, roadWidth)
+    connectNearbyRoads(grid, 8, roadWidth) // Première passe
+    connectNearbyRoads(grid, 8, roadWidth) // Deuxième passe avec la même distance
+    connectNearbyRoads(grid, 12, roadWidth) // Troisième passe avec une distance accrue
     addAttractionsAndQueues(grid, attractionsCount, queueLength, 6)
 
     while (fixRoadGaps(grid) > 0) {
