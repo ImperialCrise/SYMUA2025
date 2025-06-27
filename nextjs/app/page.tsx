@@ -22,7 +22,8 @@ interface Visitor {
   currentAttraction: number | null
   path: { x: number; y: number }[]
   speed: number
-  waitTime: number
+  waitTime: number // Temps passé dans l'attraction ou dans la file pour la logique actuelle
+  timeSpentInQueue: number // Nouveau champ pour le temps d'attente spécifique à la file
   pastAttractions: number[]
   totalWaitTime: number
   attractionsVisited: number
@@ -106,6 +107,7 @@ export default function ThemeParkSimulator() {
     satisfactionMax: 90, // Nouveau paramètre - seuil maximum
     visitorsPerQueueCell: 2, // Nouveau paramètre
     satisfactionEnabled: true, // Nouveau paramètre
+    maxQueueWaitTime: 20, // Nouveau paramètre pour le temps d'attente max en file
   })
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -696,6 +698,7 @@ export default function ThemeParkSimulator() {
           path: [],
           speed: isFamily ? 1 + Math.random() : 2 + Math.random() * 2,
           waitTime: 0,
+          timeSpentInQueue: 0, // Initialisation du nouveau champ
           pastAttractions: [],
           totalWaitTime: 0,
           attractionsVisited: 0,
@@ -938,8 +941,10 @@ export default function ThemeParkSimulator() {
             break
 
                     case "inQueue":
-          visitor.waitTime++
+          visitor.waitTime++ // Conserver pour la satisfaction ou autres logiques basées sur le temps total d'attente
           visitor.totalWaitTime++
+          visitor.timeSpentInQueue++ // Incrémenter le temps passé spécifiquement dans cette file
+
             const currentAttraction = attractions.find((a) => a.id === visitor.currentAttraction)
             if (currentAttraction) {
               const ridingVisitors = prevVisitors.filter(
@@ -947,17 +952,30 @@ export default function ThemeParkSimulator() {
             ).length
 
               // CORRECTION: Vérifier STRICTEMENT la capacité ET la position dans la queue
-              if (
-                ridingVisitors < currentAttraction.capacity &&
-                visitor.queuePosition === 0 &&
-                !attractionsAdmittedThisTick.has(currentAttraction.id) // Check if attraction already admitted someone this tick
-              ) {
-                visitor.state = "riding"
-                visitor.waitTime = 0
-                visitor.queuePosition = -1 // Plus en queue
+              // ET maintenant aussi le temps d'attente max.
+              const hasWaitedMaxTime = visitor.timeSpentInQueue >= params.maxQueueWaitTime;
+              const hasCapacity = ridingVisitors < currentAttraction.capacity;
+              const canAdmitNewVisitor = !attractionsAdmittedThisTick.has(currentAttraction.id);
 
-                // Mark that this attraction has admitted someone this tick
-                attractionsAdmittedThisTick.add(currentAttraction.id);
+              if (visitor.queuePosition === 0 && hasCapacity) {
+                // Il y a de la place, maintenant vérifions s'il doit entrer
+                if (hasWaitedMaxTime || canAdmitNewVisitor) {
+                  visitor.state = "riding";
+                  visitor.waitTime = 0; // Réinitialiser waitTime pour la durée de l'attraction
+                  visitor.timeSpentInQueue = 0; // Réinitialiser le temps passé dans la file
+                  visitor.queuePosition = -1; // Plus en queue
+                  attractionsAdmittedThisTick.add(currentAttraction.id); // Marquer que l'attraction a admis qqn
+
+                  // Téléporter le visiteur vers l'attraction
+                  visitor.x = currentAttraction.x;
+                  visitor.y = currentAttraction.y;
+                }
+                // Si hasWaitedMaxTime est faux et canAdmitNewVisitor est faux,
+                // cela signifie qu'il n'a pas attendu assez longtemps ET l'attraction a déjà admis qqn ce tick.
+                // Il reste donc en file, en tête.
+              }
+              // Si pas de capacité (hasCapacity = false) ou pas en tête de file, il ne se passe rien ici pour l'entrée.
+              // Il continue d'attendre dans la file. `timeSpentInQueue` continue d'augmenter.
                 
                 // Téléporter le visiteur vers l'attraction
                 visitor.x = currentAttraction.x
@@ -1219,7 +1237,27 @@ export default function ThemeParkSimulator() {
         return visitor
       })
 
+      // NOUVELLE LOGIQUE DE RÉINDEXATION DES FILES
+      // Cette section s'assure que les queuePosition sont contiguës (0, 1, 2...)
+      // après que des visiteurs soient entrés dans l'attraction ou aient quitté la file.
+      attractions.forEach(attraction => {
+        const visitorsInThisQueue = updatedVisitors
+          .filter(v => v.currentAttraction === attraction.id && v.state === "inQueue")
+          .sort((a, b) => {
+            // Trier par la position actuelle, les positions non valides (-1) à la fin
+            if (a.queuePosition === -1) return 1;
+            if (b.queuePosition === -1) return -1;
+            return a.queuePosition - b.queuePosition;
+          });
+
+        // Réassigner les positions pour combler les trous et assurer la contiguïté
+        visitorsInThisQueue.forEach((visitor, index) => {
+          visitor.queuePosition = index;
+        });
+      });
+
       // Faire avancer toutes les queues pour maintenir les positions physiques à jour
+      // Cette fonction met à jour les coordonnées X,Y des visiteurs en fonction de leur queuePosition.
       attractions.forEach(attraction => {
         advanceQueueForAttraction(attraction.id, updatedVisitors)
       })
@@ -1503,6 +1541,22 @@ export default function ThemeParkSimulator() {
                           min={10}
                           max={200}
                           step={5}
+                          className="mt-1"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium">
+                          Temps d'attente Max en File: {params.maxQueueWaitTime} ticks
+                        </label>
+                        <Slider
+                          value={[params.maxQueueWaitTime]}
+                          onValueChange={([value]) => {
+                            setParams((prev) => ({ ...prev, maxQueueWaitTime: value }))
+                          }}
+                          min={0}
+                          max={100}
+                          step={1}
                           className="mt-1"
                         />
                       </div>
