@@ -867,6 +867,23 @@ export default function ThemeParkSimulator() {
       }
     })
   }
+  
+  // Calculer le score d'une attraction pour un visiteur, utile pour choisir la destination
+  function calculateScore(attraction: Attraction, visitor: Visitor): number {
+    const nbDone = visitor.pastAttractions.filter(id => id === attraction.id).length;
+    const dist = Math.abs(visitor.x - attraction.x) + Math.abs(visitor.y - attraction.y);
+  
+    const wPopularity = 0.2;
+    const wNbDone = 10;
+    const wDist = 0.5;
+  
+    const score =
+      wPopularity * attraction.popularity -
+      wNbDone * nbDone -
+      wDist * dist;
+  
+    return score;    
+  }
 
   // Mise à jour de la simulation
   const updateSimulation = () => {
@@ -1074,8 +1091,15 @@ export default function ThemeParkSimulator() {
                   console.log(`Agent ${visitor.id} va essayer d'assigner une attraction, timeInTransit: ${visitor.timeInTransit}`)
                 }
                 
-                // SIMPLIFIER: Prendre une attraction aléatoire pour éviter les bugs complexes
-                const selectedAttraction = availableAttractions[Math.floor(Math.random() * availableAttractions.length)]
+                // si on veut SIMPLIFIER: Prendre une attraction aléatoire pour éviter les bugs complexes
+                //const selectedAttraction = availableAttractions[Math.floor(Math.random() * availableAttractions.length)]
+
+                //sinon choisir meilleur
+                const sorted = availableAttractions
+                .map(a => ({ attraction: a, score: calculateScore(a, visitor) }))
+                .sort((a, b) => b.score - a.score);
+
+                const selectedAttraction = sorted[0].attraction;
                 
                 visitor.currentAttraction = selectedAttraction.id
                 
