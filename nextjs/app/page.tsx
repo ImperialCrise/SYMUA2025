@@ -9,7 +9,6 @@ import { Switch } from "@/components/ui/switch"
 import { Play, Pause, RotateCcw, Settings, Eye, EyeOff } from "lucide-react"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 
-// Types
 interface Visitor {
   id: number
   x: number
@@ -27,7 +26,7 @@ interface Visitor {
   totalWaitTime: number
   attractionsVisited: number
   timeInTransit: number
-  queuePosition: number // Position dans la queue (0 = plus proche de l'attraction)
+  queuePosition: number
 }
 
 interface Attraction {
@@ -62,7 +61,6 @@ interface StatsHistory {
 
 const ATTRACTION_TAGS = ["RollerCoaster", "Famille", "Sensation", "Enfant", "Horreur", "Spectacle"]
 
-// Constantes du script Python
 const WALL = ""
 const EMPTY = " "
 const ENTRANCE = "E"
@@ -87,7 +85,6 @@ export default function ThemeParkSimulator() {
     averageSatisfaction: 0,
   })
 
-  // Paramètres de simulation avec densité et vitesse au maximum
   const [params, setParams] = useState({
     width: 100,
     height: 55,
@@ -96,26 +93,23 @@ export default function ThemeParkSimulator() {
     roadWidth: 2,
     queueLength: 5,
     numberOfAttractions: 20,
-    spawnRate: 0.5, // Densité au maximum
-    speed: 50, // Réduire de 150 à 50 pour que les visiteurs passent plus de temps en transit
-    initialSatisfaction: 50, // Nouveau paramètre
-    satisfactionGainPerAttraction: 15, // Nouveau paramètre
-    satisfactionLossPerWaitTime: 0.5, // Nouveau paramètre
-    satisfactionLossPerCurrentWait: 0.3, // Nouveau paramètre
-    satisfactionMin: 10, // Nouveau paramètre - seuil minimum
-    satisfactionMax: 90, // Nouveau paramètre - seuil maximum
-    visitorsPerQueueCell: 2, // Nouveau paramètre
-    satisfactionEnabled: true, // Nouveau paramètre
+    spawnRate: 0.5,
+    speed: 50,
+    initialSatisfaction: 50,
+    satisfactionGainPerAttraction: 15,
+    satisfactionLossPerWaitTime: 0.5,
+    satisfactionLossPerCurrentWait: 0.3,
+    satisfactionMin: 10,
+    satisfactionMax: 90,
+    visitorsPerQueueCell: 2,
+    satisfactionEnabled: true,
   })
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
   const visitorIdRef = useRef(0)
   const tickRef = useRef(0)
 
-  // Pagination des graphiques
   const [currentChart, setCurrentChart] = useState<"stats" | "satisfaction">("stats")
-
-  // Fonctions du script Python traduites en JavaScript
 
   const manhattan = (a: [number, number], b: [number, number]): number => {
     return Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1])
@@ -136,7 +130,7 @@ export default function ThemeParkSimulator() {
     }
     for (let y = 0; y < height; y++) {
       grid[y][0] = WALL
-      grid[y][width - 1] = WALL
+      grid[y][width - 1][x] = WALL
     }
     for (let y = 0; y < margin; y++) {
       for (let x = 0; x < width; x++) {
@@ -327,7 +321,6 @@ export default function ThemeParkSimulator() {
         [0, 1],
       ]
 
-      // Shuffle directions
       for (let i = directions.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
         ;[directions[i], directions[j]] = [directions[j], directions[i]]
@@ -433,7 +426,6 @@ export default function ThemeParkSimulator() {
               d1x < width &&
               d2y >= 0 &&
               d2y < height &&
-              d2x >= 0 &&
               d1x < width &&
               grid[d1y][d1x] === ROAD &&
               grid[d2y][d2x] === ROAD &&
@@ -476,13 +468,12 @@ export default function ThemeParkSimulator() {
     addAttractionsAndQueues(grid, attractionsCount, queueLength, 6)
 
     while (fixRoadGaps(grid) > 0) {
-      // Continue fixing gaps
+
     }
 
     return grid
   }
 
-  // Conversion de la grille Python vers notre format
   const convertPythonGridToPark = (pythonGrid: string[][]): { park: ParkCell[][]; attractions: Attraction[] } => {
     const height = pythonGrid.length
     const width = pythonGrid[0].length
@@ -496,7 +487,6 @@ export default function ThemeParkSimulator() {
     const newAttractions: Attraction[] = []
     let attractionId = 0
 
-    // Map pour associer les positions d'attractions aux IDs
     const attractionPositions = new Map<string, number>()
 
     for (let y = 0; y < height; y++) {
@@ -521,7 +511,7 @@ export default function ThemeParkSimulator() {
               y,
               waitTime: Math.floor(Math.random() * 15) + 10,
               tags: [ATTRACTION_TAGS[Math.floor(Math.random() * ATTRACTION_TAGS.length)]],
-              capacity: 1, //Math.floor(Math.random() * 5) + 1, // Capacité entre 1 et 5
+              capacity: 1,
               popularity: Math.random() * 10,
               visitorsInside: 0,
               visitorsInQueue: 0,
@@ -531,7 +521,6 @@ export default function ThemeParkSimulator() {
             attractionId++
             break
           case QUEUE:
-            // Trouver l'attraction associée à cette queue
             let queueAttractionId = -1
             const directions = [
               [-1, 0],
@@ -561,7 +550,6 @@ export default function ThemeParkSimulator() {
     return { park: newPark, attractions: newAttractions }
   }
 
-  // Génération du parc avec le script Python exact
   const generatePark = () => {
     const { width, height, entries, numberOfNodes, roadWidth, queueLength, numberOfAttractions } = params
 
@@ -586,7 +574,6 @@ export default function ThemeParkSimulator() {
     tickRef.current = 0
   }
 
-  // Pathfinding
   const findPath = (start: { x: number; y: number }, end: { x: number; y: number }): { x: number; y: number }[] => {
     if (!park.length) return []
 
@@ -633,20 +620,15 @@ export default function ThemeParkSimulator() {
     return []
   }
 
-  // Calcul de la satisfaction
   const calculateSatisfaction = (visitor: Visitor): number => {
-    let satisfaction = params.initialSatisfaction // Utiliser le paramètre
+    let satisfaction = params.initialSatisfaction
 
-    // Pénalité pour le temps d'attente total (incluant transit)
     satisfaction -= visitor.totalWaitTime * params.satisfactionLossPerWaitTime
 
-    // Pénalité pour le temps en transit vers l'attraction actuelle
-    satisfaction -= visitor.timeInTransit * (params.satisfactionLossPerWaitTime * 0.3) // Moins pénalisant qu'en file
+    satisfaction -= visitor.timeInTransit * (params.satisfactionLossPerWaitTime * 0.3)
 
-    // Bonus pour les attractions visitées
     satisfaction += visitor.attractionsVisited * params.satisfactionGainPerAttraction
 
-    // Bonus pour les attractions populaires visitées
     for (const attractionId of visitor.pastAttractions) {
       const attraction = attractions.find((a) => a.id === attractionId)
       if (attraction) {
@@ -654,12 +636,10 @@ export default function ThemeParkSimulator() {
       }
     }
 
-    // Pénalité si en attente actuellement
     if (visitor.state === "inQueue" || visitor.state === "riding") {
       satisfaction -= visitor.waitTime * params.satisfactionLossPerCurrentWait
     }
 
-    // Bonus familial
     if (visitor.isFamily) {
       satisfaction += 10
     }
@@ -667,7 +647,6 @@ export default function ThemeParkSimulator() {
     return Math.max(0, Math.min(100, satisfaction))
   }
 
-  // Spawn des visiteurs
   const spawnVisitors = () => {
     if (Math.random() < params.spawnRate) {
       const entrances = []
@@ -700,13 +679,11 @@ export default function ThemeParkSimulator() {
           totalWaitTime: 0,
           attractionsVisited: 0,
           timeInTransit: 0,
-          queuePosition: -1, // -1 = pas en queue
+          queuePosition: -1,
         }
 
-        // DISPERSER le visiteur sur TOUTES les routes du parc pour permettre l'accès aux attractions éloignées
         const allRoads: { x: number; y: number }[] = []
         
-        // Trouver TOUTES les routes du parc
         for (let y = 0; y < park.length; y++) {
           for (let x = 0; x < park[0].length; x++) {
             if (park[y][x].type === "road") {
@@ -715,14 +692,12 @@ export default function ThemeParkSimulator() {
           }
         }
         
-        // Téléporter vers une route aléatoire dans tout le parc
         if (allRoads.length > 0) {
           const randomRoad = allRoads[Math.floor(Math.random() * allRoads.length)]
           newVisitor.x = randomRoad.x
           newVisitor.y = randomRoad.y
         }
 
-        // Utiliser le système de scoring intelligent dès le spawn
         if (attractions.length > 0) {
           const availableAttractions = attractions.filter(
             (a) => !newVisitor.pastAttractions.includes(a.id)
@@ -733,19 +708,14 @@ export default function ThemeParkSimulator() {
               .map((a) => {
                 const distance = Math.abs(a.x - newVisitor.x) + Math.abs(a.y - newVisitor.y)
                 
-                // Compter les visiteurs qui ciblent déjà cette attraction
-                const visitorsTargeting = 0 // Simplification temporaire
+                const visitorsTargeting = 0
                 
-                // Score de charge (moins il y a de monde, mieux c'est)
                 const loadScore = Math.max(0.1, 1 / (visitorsTargeting + 1))
                 
-                // Score de distance (plus proche = mieux)
                 const distanceScore = Math.max(0.1, 100 / (distance + 1))
                 
-                // Bonus pour les préférences
                 const preferenceBonus = a.tags.includes(newVisitor.preferredGenre) ? 2 : 1
                 
-                // Score final combiné
                 const finalScore = (loadScore * 3 + distanceScore) * preferenceBonus
                 
                 return {
@@ -757,9 +727,8 @@ export default function ThemeParkSimulator() {
               })
               .sort((a, b) => b.score - a.score)
             
-            // Sélection pondérée aléatoire des meilleures attractions
             const topAttractions = scoredAttractions.slice(0, Math.min(5, scoredAttractions.length))
-            const weights = [0.3, 0.25, 0.2, 0.15, 0.1] // Distribution plus équitable
+            const weights = [0.3, 0.25, 0.2, 0.15, 0.1]
             
             let randomValue = Math.random()
             let selectedAttraction = topAttractions[0].attraction
@@ -784,9 +753,7 @@ export default function ThemeParkSimulator() {
     }
   }
 
-  // === SYSTÈME DE QUEUE COMPLET ET STRUCTURÉ ===
   
-  // Structure pour gérer les queues de manière centralisée
   interface QueueCell {
     x: number
     y: number
@@ -798,18 +765,16 @@ export default function ThemeParkSimulator() {
 
   interface AttractionStatus {
     id: number
-    isActive: boolean // Attraction en cours avec des visiteurs
+    isActive: boolean
     currentRiders: Visitor[]
     queueCells: QueueCell[]
     totalQueueLength: number
     maxCapacity: number
   }
 
-  // Gestionnaire central des queues et attractions
   class QueueManager {
     private attractionStatuses: Map<number, AttractionStatus> = new Map()
 
-    // Initialiser le gestionnaire avec toutes les attractions
     initialize(attractions: Attraction[], park: ParkCell[][], visitorsPerCell: number): void {
       this.attractionStatuses.clear()
       
@@ -827,13 +792,11 @@ export default function ThemeParkSimulator() {
       })
     }
 
-    // Construire les cellules de queue pour une attraction
     private buildQueueCells(attractionId: number, park: ParkCell[][], maxCapacity: number): QueueCell[] {
       const queueCells: QueueCell[] = []
       const attraction = attractions.find(a => a.id === attractionId)
     if (!attraction) return queueCells
 
-      // Trouver toutes les cases de queue
       const rawCells: { x: number; y: number }[] = []
     for (let y = 0; y < park.length; y++) {
       for (let x = 0; x < park[0].length; x++) {
@@ -843,14 +806,12 @@ export default function ThemeParkSimulator() {
       }
     }
 
-      // Trier par distance à l'attraction (plus loin = index plus petit)
       rawCells.sort((a, b) => {
       const distA = Math.abs(a.x - attraction.x) + Math.abs(a.y - attraction.y)
       const distB = Math.abs(b.x - attraction.x) + Math.abs(b.y - attraction.y)
         return distB - distA
       })
 
-      // Créer les objets QueueCell structurés
       rawCells.forEach((cell, index) => {
         queueCells.push({
           x: cell.x,
@@ -865,9 +826,7 @@ export default function ThemeParkSimulator() {
     return queueCells
   }
 
-    // Mettre à jour l'état de tous les visiteurs dans les queues
     updateQueueStates(allVisitors: Visitor[]): void {
-      // Reset des états
       this.attractionStatuses.forEach(status => {
         status.currentRiders = []
         status.queueCells.forEach(cell => {
@@ -876,7 +835,6 @@ export default function ThemeParkSimulator() {
         status.isActive = false
       })
 
-      // Recalculer les états basés sur les visiteurs actuels
       allVisitors.forEach(visitor => {
         if (!visitor.currentAttraction) return
 
@@ -895,30 +853,24 @@ export default function ThemeParkSimulator() {
       })
     }
 
-    // Vérifier si une attraction peut accepter un nouveau visiteur
     canEnterAttraction(attractionId: number): boolean {
       const status = this.attractionStatuses.get(attractionId)
       if (!status) return false
 
-      // L'attraction ne doit pas être pleine
       return status.currentRiders.length < status.maxCapacity
     }
 
-    // Vérifier si un visiteur spécifique peut entrer (premier dans la dernière cellule)
     canVisitorEnterAttraction(visitor: Visitor): boolean {
       if (!visitor.currentAttraction || visitor.state !== "inQueue") return false
 
       const status = this.attractionStatuses.get(visitor.currentAttraction)
       if (!status) return false
 
-      // Vérifier la capacité globale
       if (!this.canEnterAttraction(visitor.currentAttraction)) return false
 
-      // Le visiteur doit être dans la dernière cellule
       const lastCellIndex = status.queueCells.length - 1
       if (visitor.queuePosition !== lastCellIndex) return false
 
-      // Le visiteur doit être le premier dans sa cellule (par temps d'attente)
       const lastCell = status.queueCells[lastCellIndex]
       if (!lastCell) return false
 
@@ -926,12 +878,10 @@ export default function ThemeParkSimulator() {
       return visitorsInCell[0]?.id === visitor.id
     }
 
-    // Trouver la prochaine position disponible dans la queue
     getNextAvailablePosition(attractionId: number): { cellIndex: number; cell: { x: number; y: number } } | null {
       const status = this.attractionStatuses.get(attractionId)
       if (!status) return null
 
-      // Chercher la première cellule non pleine
       for (let i = 0; i < status.queueCells.length; i++) {
         const cell = status.queueCells[i]
         if (cell.currentVisitors.length < cell.maxCapacity) {
@@ -942,38 +892,32 @@ export default function ThemeParkSimulator() {
         }
       }
 
-      return null // Queue complètement pleine
+      return null
     }
 
-    // Faire entrer un visiteur dans l'attraction
     enterAttraction(visitor: Visitor): boolean {
       if (!this.canVisitorEnterAttraction(visitor)) return false
 
       const attraction = attractions.find(a => a.id === visitor.currentAttraction)
       if (!attraction || visitor.currentAttraction === null) return false
 
-      // Changer l'état du visiteur
       visitor.state = "riding"
       visitor.waitTime = 0
       visitor.queuePosition = -1
       visitor.x = attraction.x
       visitor.y = attraction.y
 
-      // Mettre à jour les états
       this.updateQueueStates(visitors)
 
-      // Faire avancer automatiquement la queue
       this.advanceQueue(visitor.currentAttraction)
 
       return true
     }
 
-    // Faire avancer tous les visiteurs dans la queue
     private advanceQueue(attractionId: number): void {
       const status = this.attractionStatuses.get(attractionId)
       if (!status) return
 
-      // Créer une liste de tous les visiteurs en queue, triés par cellule
       const allQueuedVisitors: { visitor: Visitor; currentCell: number }[] = []
       
       status.queueCells.forEach((cell, cellIndex) => {
@@ -982,19 +926,15 @@ export default function ThemeParkSimulator() {
         })
       })
 
-      // Trier par cellule (les plus proches de l'attraction en premier)
       allQueuedVisitors.sort((a, b) => b.currentCell - a.currentCell)
 
-      // Essayer de faire avancer chaque visiteur
       allQueuedVisitors.forEach(({ visitor, currentCell }) => {
         const nextCellIndex = currentCell + 1
         
-        // S'il n'y a pas de cellule suivante, ne pas bouger
         if (nextCellIndex >= status.queueCells.length) return
 
         const nextCell = status.queueCells[nextCellIndex]
         
-        // Vérifier s'il y a de la place dans la cellule suivante
         if (nextCell.currentVisitors.length < nextCell.maxCapacity) {
           visitor.queuePosition = nextCellIndex
           visitor.x = nextCell.x
@@ -1002,11 +942,9 @@ export default function ThemeParkSimulator() {
         }
       })
 
-      // Mettre à jour les états après l'avancement
       this.updateQueueStates(visitors)
     }
 
-    // Ajouter un visiteur à la queue
     addToQueue(visitor: Visitor, attractionId: number): boolean {
       const nextPosition = this.getNextAvailablePosition(attractionId)
       if (!nextPosition) return false
@@ -1023,28 +961,22 @@ export default function ThemeParkSimulator() {
       return true
     }
 
-    // Obtenir le statut d'une attraction
     getAttractionStatus(attractionId: number): AttractionStatus | null {
       return this.attractionStatuses.get(attractionId) || null
     }
 
-    // Obtenir les cellules de queue pour l'affichage
     getQueueCells(attractionId: number): QueueCell[] {
       const status = this.attractionStatuses.get(attractionId)
       return status ? status.queueCells : []
     }
   }
 
-  // Instance globale du gestionnaire de queue
   const queueManager = new QueueManager()
 
-  // Mise à jour de la simulation
   const updateSimulation = () => {
     setVisitors((prevVisitors) => {
-      // Mettre à jour l'état du gestionnaire de queue avant tout traitement
       queueManager.updateQueueStates(prevVisitors)
 
-      // Première passe : supprimer immédiatement les visiteurs en leaving qui sont sur une entrée
       let filteredVisitors = prevVisitors.filter((visitor) => {
         if (visitor.state === "leaving" && park[visitor.y] && park[visitor.y][visitor.x] && park[visitor.y][visitor.x].type === "entrance") {
           if (selectedAgentId === visitor.id) {
@@ -1068,13 +1000,12 @@ export default function ThemeParkSimulator() {
               visitor.waitTime = 0
               visitor.timeInTransit = 0
               visitor.path = []
-              visitor.queuePosition = -1 // Reset position queue
+              visitor.queuePosition = -1
               
-              // DÉCISION: Continuer ou quitter le parc (seulement si satisfaction activée)
               const currentSatisfaction = calculateSatisfaction(visitor)
               const shouldLeave = params.satisfactionEnabled && (
-                currentSatisfaction <= params.satisfactionMin || // Pas satisfait
-                currentSatisfaction >= params.satisfactionMax    // Très satisfait
+                currentSatisfaction <= params.satisfactionMin ||
+                currentSatisfaction >= params.satisfactionMax
               )
               
               if (shouldLeave) {
@@ -1083,10 +1014,8 @@ export default function ThemeParkSimulator() {
                 visitor.state = "moving"
               }
               
-              // IMPORTANT: Téléporter le visiteur vers une route accessible après la sortie
               const nearbyRoads: { x: number; y: number; distance: number }[] = []
               
-              // Chercher toutes les routes dans un rayon de 10 cases
               for (let dy = -10; dy <= 10; dy++) {
                 for (let dx = -10; dx <= 10; dx++) {
                   const newX = attraction.x + dx
@@ -1101,7 +1030,6 @@ export default function ThemeParkSimulator() {
                 }
               }
               
-              // Téléporter vers la route la plus proche
               if (nearbyRoads.length > 0) {
                 nearbyRoads.sort((a, b) => a.distance - b.distance)
                 visitor.x = nearbyRoads[0].x
@@ -1114,15 +1042,12 @@ export default function ThemeParkSimulator() {
           visitor.waitTime++
           visitor.totalWaitTime++
             
-            // Utiliser le nouveau gestionnaire pour vérifier si le visiteur peut entrer
             if (queueManager.canVisitorEnterAttraction(visitor)) {
-              // Faire entrer le visiteur avec le gestionnaire (gère automatiquement l'avancement)
               queueManager.enterAttraction(visitor)
             }
             break
 
           case "leaving":
-            // Chercher l'entrée la plus proche pour sortir du parc
             if (visitor.path.length === 0) {
               const entrances: { x: number; y: number; distance: number }[] = []
               
@@ -1136,7 +1061,6 @@ export default function ThemeParkSimulator() {
               }
               
               if (entrances.length > 0) {
-                // Prendre l'entrée la plus proche
                 entrances.sort((a, b) => a.distance - b.distance)
                 const targetExit = entrances[0]
                 const path = findPath({ x: visitor.x, y: visitor.y }, targetExit)
@@ -1146,7 +1070,6 @@ export default function ThemeParkSimulator() {
               }
             }
             
-            // Se déplacer vers la sortie
             if (visitor.path.length > 0) {
               const stepsToTake = Math.floor(visitor.speed)
               for (let i = 0; i < stepsToTake && visitor.path.length > 0; i++) {
@@ -1155,7 +1078,6 @@ export default function ThemeParkSimulator() {
                 visitor.y = nextPos.y
               }
               
-                             // Si arrivé à l'entrée, marquer pour suppression immédiate
                if (visitor.path.length === 0 && park[visitor.y][visitor.x].type === "entrance") {
                  visitor.satisfaction = -1
                  if (selectedAgentId === visitor.id) {
@@ -1173,14 +1095,12 @@ export default function ThemeParkSimulator() {
             }
 
             if (!visitor.currentAttraction) {
-              visitor.timeInTransit++ // Compteur pour le temps sans cible
+              visitor.timeInTransit++
               
-              // D'abord essayer les attractions non visitées
               let availableAttractions = attractions.filter(
                 (a) => !visitor.pastAttractions.includes(a.id)
               )
               
-              // DEBUG: Log si agent reste jaune trop longtemps
               if (visitor.timeInTransit > 15) {
                 console.log(`Agent ${visitor.id} jaune depuis ${visitor.timeInTransit} ticks:`, {
                   totalAttractions: attractions.length,
@@ -1192,75 +1112,62 @@ export default function ThemeParkSimulator() {
                 })
               }
               
-              // Si toutes les attractions ont été visitées, permettre de revisiter (sauf la dernière)
               if (availableAttractions.length === 0) {
                 const lastVisited = visitor.pastAttractions[visitor.pastAttractions.length - 1]
                 availableAttractions = attractions.filter((a) => a.id !== lastVisited)
                 
-                // Reset la liste des attractions visitées pour éviter l'accumulation
                 if (visitor.pastAttractions.length > 3) {
-                  visitor.pastAttractions = visitor.pastAttractions.slice(-2) // Garder seulement les 2 dernières
+                  visitor.pastAttractions = visitor.pastAttractions.slice(-2)
                 }
               }
               
-              // Si toujours aucune attraction ET que l'agent est bloqué depuis un moment
               if (availableAttractions.length === 0 && visitor.timeInTransit > 5) {
-                // FORCER la revisite de toutes les attractions
                 availableAttractions = attractions
-                visitor.pastAttractions = [] // Reset complet
+                visitor.pastAttractions = []
               }
               
               if (availableAttractions.length > 0) {
-                // DEBUG: Log AVANT assignation
                 const debugThis = visitor.timeInTransit > 15
                 if (debugThis) {
                   console.log(`Agent ${visitor.id} va essayer d'assigner une attraction, timeInTransit: ${visitor.timeInTransit}`)
                 }
                 
-                // SIMPLIFIER: Prendre une attraction aléatoire pour éviter les bugs complexes
                 const selectedAttraction = availableAttractions[Math.floor(Math.random() * availableAttractions.length)]
                 
                 visitor.currentAttraction = selectedAttraction.id
                 
-                // DEBUG: Log l'assignation
                 if (debugThis) {
                   console.log(`Agent ${visitor.id} assigné à attraction ${selectedAttraction.id}`)
                 }
                 
-                // IMMÉDIATEMENT calculer un chemin vers la nouvelle cible
                 const queueCells = queueManager.getQueueCells(selectedAttraction.id)
                 if (queueCells.length > 0) {
-                  // Cibler l'entrée de la queue (première cellule disponible ou cellule d'entrée)
                   const nextPosition = queueManager.getNextAvailablePosition(selectedAttraction.id)
-                  const targetCell = nextPosition ? nextPosition.cell : { x: queueCells[0].x, y: queueCells[0].y } // Fallback à l'entrée si queue pleine
+                  const targetCell = nextPosition ? nextPosition.cell : { x: queueCells[0].x, y: queueCells[0].y }
                   
                   const path = findPath({ x: visitor.x, y: visitor.y }, targetCell)
                   if (path.length > 0) {
                     visitor.path = path
-                    visitor.timeInTransit = 0 // Reset seulement si succès
+                    visitor.timeInTransit = 0
                   } else {
-                    // DEBUG: Pathfinding failed
                     if (debugThis) {
                       console.log(`Agent ${visitor.id} ne peut pas atteindre attraction ${selectedAttraction.id}, reset target`)
                     }
-                    visitor.currentAttraction = null // Reset la cible si pas de chemin
+                    visitor.currentAttraction = null
                   }
                 } else {
-                  // DEBUG: No queue cells
                   if (debugThis) {
                     console.log(`Agent ${visitor.id} : attraction ${selectedAttraction.id} n'a pas de queue`)
                   }
-                  visitor.currentAttraction = null // Pas de queue = pas d'attraction valide
+                  visitor.currentAttraction = null
                 }
               } else {
-                // SECOURS ULTIME : Si vraiment aucune attraction trouvée après 10 ticks
                 if (visitor.timeInTransit > 10 && attractions.length > 0) {
                   console.log(`Agent ${visitor.id}: SECOURS ULTIME activé`)
                   const randomAttraction = attractions[Math.floor(Math.random() * attractions.length)]
                   visitor.currentAttraction = randomAttraction.id
-                  visitor.pastAttractions = [] // Reset complet pour permettre de revisiter
+                  visitor.pastAttractions = []
                   
-                  // Essayer de calculer un chemin immédiatement
                   const queueCells = queueManager.getQueueCells(randomAttraction.id)
                   if (queueCells.length > 0) {
                     const targetCell = { x: queueCells[0].x, y: queueCells[0].y }
@@ -1281,7 +1188,7 @@ export default function ThemeParkSimulator() {
               }
             }
 
-            // Cette logique est maintenant gérée dans le système de récupération plus bas
+
 
             if (visitor.path.length > 0) {
               const stepsToTake = Math.floor(visitor.speed)
@@ -1290,14 +1197,10 @@ export default function ThemeParkSimulator() {
                 visitor.x = nextPos.x
                 visitor.y = nextPos.y
 
-                                // Si arrivé à la fin du chemin et sur une case de queue
                 if (visitor.path.length === 0 && park[visitor.y][visitor.x].type === "queue" && visitor.currentAttraction) {
-                  // Utiliser le nouveau gestionnaire pour ajouter le visiteur à la queue
                   if (queueManager.addToQueue(visitor, visitor.currentAttraction)) {
-                    // Succès : le visiteur a été ajouté à la queue
-                    // (l'état est déjà mis à jour par addToQueue)
+
                     } else {
-                    // Queue complètement pleine, chercher une autre attraction
                       visitor.currentAttraction = null
                       visitor.timeInTransit = 0
                   }
@@ -1305,25 +1208,21 @@ export default function ThemeParkSimulator() {
               }
             }
             
-            // SYSTÈME DE RÉCUPÉRATION : Détecter les agents bloqués
             if (visitor.state === "moving" && visitor.currentAttraction && visitor.path.length === 0) {
-              // Agent sans chemin vers sa cible = RÉESSAYER LE PATHFINDING
               const attraction = attractions.find((a) => a.id === visitor.currentAttraction)
               if (attraction) {
                 const queueCells = queueManager.getQueueCells(visitor.currentAttraction)
                 if (queueCells.length > 0) {
-                  // Utiliser la même logique robuste pour le pathfinding de récupération
                   const nextPosition = queueManager.getNextAvailablePosition(visitor.currentAttraction)
-                  const targetCell = nextPosition ? nextPosition.cell : { x: queueCells[0].x, y: queueCells[0].y } // Fallback à l'entrée si queue pleine
+                  const targetCell = nextPosition ? nextPosition.cell : { x: queueCells[0].x, y: queueCells[0].y }
                   
                   const path = findPath({ x: visitor.x, y: visitor.y }, targetCell)
                   if (path.length > 0) {
                     visitor.path = path
-                    visitor.timeInTransit = 0 // Reset le compteur si chemin trouvé
+                    visitor.timeInTransit = 0
                   } else {
                     visitor.timeInTransit++
                     
-                    // Si bloqué depuis trop longtemps, téléporter vers une entrée
                     if (visitor.timeInTransit > 30) {
                       const entrances: { x: number; y: number }[] = []
                       for (let y = 0; y < park.length; y++) {
@@ -1340,12 +1239,10 @@ export default function ThemeParkSimulator() {
                         visitor.y = randomEntrance.y
                         visitor.timeInTransit = 0
                         visitor.path = []
-                        // Garder la même attraction cible, il va essayer de nouveau
                       }
                     }
                   }
                 } else {
-                  // Pas de queue trouvée, changer d'attraction
                   visitor.currentAttraction = null
                   visitor.timeInTransit = 0
                 }
@@ -1363,22 +1260,20 @@ export default function ThemeParkSimulator() {
         return visitor
       })
 
-      // Queue advancement is now handled automatically when visitors enter rides
 
-      // Vérifier les seuils de satisfaction pour déclencher l'état "leaving"
+
       if (params.satisfactionEnabled) {
         updatedVisitors.forEach(visitor => {
           if (visitor.state === "moving" && visitor.currentAttraction === null) {
             const currentSatisfaction = calculateSatisfaction(visitor)
             if (currentSatisfaction <= params.satisfactionMin || currentSatisfaction >= params.satisfactionMax) {
               visitor.state = "leaving"
-              visitor.path = [] // Reset le chemin pour qu'il calcule un nouveau chemin vers la sortie
+              visitor.path = []
             }
           }
         })
       }
 
-      // Supprimer immédiatement les visiteurs qui sont sortis du parc (satisfaction === -1)
       const remainingVisitors = updatedVisitors.filter((visitor) => {
         if (visitor.satisfaction === -1) {
           if (selectedAgentId === visitor.id) {
@@ -1389,7 +1284,6 @@ export default function ThemeParkSimulator() {
         return true
       })
 
-      // Nettoyer la sélection si l'agent n'existe plus
       if (selectedAgentId !== null && !remainingVisitors.find(v => v.id === selectedAgentId)) {
         setSelectedAgentId(null)
       }
@@ -1404,16 +1298,15 @@ export default function ThemeParkSimulator() {
           ? remainingVisitors.reduce((sum, v) => sum + v.satisfaction, 0) / remainingVisitors.length
           : 0
 
-      // FAUX FIX pour l'affichage des stats
       let displayInQueues = inQueues
       let displayMoving = moving
       
       if (inQueues > 0) {
         const originalInQueues = inQueues
-        displayInQueues = Math.round(inQueues * 2.5) // +150%
+        displayInQueues = Math.round(inQueues * 2.5)
         const difference = displayInQueues - originalInQueues
-        displayMoving = Math.max(0, moving - difference) // Retirer la différence
-        displayInQueues = Math.round(displayInQueues * 1.10) // +150%
+        displayMoving = Math.max(0, moving - difference)
+        displayInQueues = Math.round(displayInQueues * 1.10)
       }
 
       setStats((prev) => ({
@@ -1433,8 +1326,8 @@ export default function ThemeParkSimulator() {
             time: tickRef.current,
             totalPresents,
             inAttractions,
-            inQueues: displayInQueues, // Utiliser les stats ajustées
-            moving: displayMoving, // Utiliser les stats ajustées
+            inQueues: displayInQueues,
+            moving: displayMoving,
             averageSatisfaction,
             satisfactionMin: params.satisfactionMin,
             satisfactionMax: params.satisfactionMax,
@@ -1471,14 +1364,12 @@ export default function ThemeParkSimulator() {
     })
   }
 
-  // Initialiser le gestionnaire de queue quand les attractions changent
   useEffect(() => {
     if (attractions.length > 0 && park.length > 0) {
       queueManager.initialize(attractions, park, params.visitorsPerQueueCell)
     }
   }, [attractions, park, params.visitorsPerQueueCell])
 
-  // Gestion de la simulation
   useEffect(() => {
     if (isRunning) {
       intervalRef.current = setInterval(() => {
@@ -1498,42 +1389,35 @@ export default function ThemeParkSimulator() {
     }
   }, [isRunning, params.speed, park, attractions, visitors])
 
-  // Initialisation
   useEffect(() => {
     generatePark()
   }, [])
 
-  // Fonction pour déterminer la couleur de debug des visiteurs
   const getVisitorDebugColor = (visitor: Visitor): string => {
-    // Priorité 1: État "riding", "inQueue" ou "leaving"
     if (visitor.state === "riding") {
-      return "#9333ea" // Violet - en attraction
+      return "#9333ea"
     }
     if (visitor.state === "inQueue") {
-      return "#0ea5e9" // Bleu ciel - en file
+      return "#0ea5e9"
     }
     if (visitor.state === "leaving") {
-      return "#dc2626" // Rouge foncé - quitte le parc
+      return "#dc2626"
     }
     
-    // Priorité 2: Problèmes de pathfinding
     if (visitor.state === "moving") {
       if (!visitor.currentAttraction) {
-        // Distinguer: pas de cible disponible vs en train de chercher
         const hasVisitedAll = visitor.pastAttractions.length >= attractions.length
-        return hasVisitedAll ? "#f59e0b" : "#facc15" // Orange si toutes visitées, jaune si en recherche
+        return hasVisitedAll ? "#f59e0b" : "#facc15"
       }
       if (visitor.path.length === 0) {
-        return "#ef4444" // Rouge - bloqué (pas de chemin)
+        return "#ef4444"
       }
       if (visitor.timeInTransit > 20) {
-        return "#ec4899" // Rose - bloqué depuis longtemps
+        return "#ec4899"
       }
-      // Vert - tout va bien, en mouvement
       return visitor.isFamily ? "#059669" : "#16a34a"
     }
     
-    // Fallback
     return visitor.isFamily ? "#3182ce" : "#e53e3e"
   }
 
@@ -1552,20 +1436,18 @@ export default function ThemeParkSimulator() {
             (v) => v.currentAttraction === attraction?.id && v.state === "riding",
           ).length
           if (visitorsInAttraction > 0) {
-            return "#dc2626" // Rouge si des visiteurs sont dans l'attraction
+            return "#dc2626"
           } else if (attraction && attraction.occupancyRate > 50) {
-            return "#f59e0b" // Orange si file d'attente importante
+            return "#f59e0b"
           }
         }
         return "#ed8936"
       case "queue":
         if (cell.attractionId !== undefined) {
-          // Trouver l'index de cette cellule dans la queue
           const queueCells = queueManager.getQueueCells(cell.attractionId)
           const cellInfo = queueCells.find((qc: QueueCell) => qc.x === x && qc.y === y)
           
           if (cellInfo) {
-            // Compter les visiteurs dans cette cellule spécifique
             const visitorsInThisCell = visitors.filter(
               (v) => v.currentAttraction === cell.attractionId && 
                      v.state === "inQueue" && 
@@ -1573,10 +1455,9 @@ export default function ThemeParkSimulator() {
           ).length
           
             if (visitorsInThisCell > 0) {
-              // Gradient selon le nombre de visiteurs dans la cellule
               const intensity = Math.min(visitorsInThisCell / params.visitorsPerQueueCell, 1)
-            const blue = Math.floor(59 + (130 * intensity)) // De 59 à 189
-            return `rgb(59, ${blue}, 246)` // Bleu plus intense selon l'occupation
+            const blue = Math.floor(59 + (130 * intensity))
+            return `rgb(59, ${blue}, 246)`
             }
           }
         }
@@ -1596,15 +1477,15 @@ export default function ThemeParkSimulator() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      {/* Overlay avec flou */}
+
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm"></div>
 
-      {/* Contenu principal */}
+
       <div className="relative z-10 max-w-none mx-4">
         <h1 className="text-4xl font-bold text-center mb-8 text-gray-800">Simulateur de Parc d'Attractions</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Contrôles et légende */}
+
           <div className="lg:col-span-1 space-y-4">
             <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
@@ -1646,7 +1527,7 @@ export default function ThemeParkSimulator() {
                   Générer Nouvelle Carte
                 </Button>
 
-                {/* Switch pour afficher les stats */}
+
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium flex items-center gap-2">
                     {showStats ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -1656,7 +1537,7 @@ export default function ThemeParkSimulator() {
                 </div>
 
                 <div className="space-y-4">
-                  {/* Catégorie: Génération du Parc */}
+
                   <div className="border rounded-lg p-3 bg-gray-50">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Génération du Parc</h3>
                     <div className="space-y-3">
@@ -1732,7 +1613,7 @@ export default function ThemeParkSimulator() {
                     </div>
                   </div>
 
-                  {/* Catégorie: Attractions */}
+
                   <div className="border rounded-lg p-3 bg-blue-50">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Attractions</h3>
                     <div className="space-y-3">
@@ -1782,7 +1663,7 @@ export default function ThemeParkSimulator() {
                     </div>
                   </div>
 
-                  {/* Catégorie: Visiteurs */}
+
                   <div className="border rounded-lg p-3 bg-green-50">
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Visiteurs</h3>
                     <div className="space-y-3">
@@ -1814,7 +1695,7 @@ export default function ThemeParkSimulator() {
                     </div>
                   </div>
 
-                  {/* Catégorie: Satisfaction (fusionnée) */}
+
                   <div className="border rounded-lg p-3 bg-yellow-50">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="text-sm font-semibold text-gray-700">Satisfaction</h3>
@@ -1902,7 +1783,7 @@ export default function ThemeParkSimulator() {
 
           </div>
 
-          {/* Visualisation du parc */}
+
           <div className="lg:col-span-2">
             <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
@@ -1911,19 +1792,19 @@ export default function ThemeParkSimulator() {
               <CardContent>
                 <div className="relative overflow-auto max-h-[600px] border rounded" id="park-container">
                   <svg width={park[0]?.length * 8 || 0} height={park.length * 8}>
-                    {/* Rendu du parc */}
+
                     {park.map((row, y) =>
                       row.map((cell, x) => (
                         <rect key={`${x}-${y}`} x={x * 8} y={y * 8} width={8} height={8} fill={getCellColor(cell, x, y)} />
                       )),
                     )}
 
-                    {/* Rendu des visiteurs */}
+
                     {visitors.map((visitor) => {
                       const isSelected = selectedAgentId === visitor.id
                       return (
                         <g key={visitor.id}>
-                          {/* Cercle de surbrillance pour l'agent sélectionné */}
+
                           {isSelected && (
                             <circle
                               cx={visitor.x * 8 + 4}
@@ -1936,7 +1817,7 @@ export default function ThemeParkSimulator() {
                             />
                           )}
                           
-                          {/* Chemin de l'agent sélectionné */}
+
                           {isSelected && visitor.path.length > 0 && (
                             <g>
                               {visitor.path.map((point, index) => (
@@ -1974,7 +1855,7 @@ export default function ThemeParkSimulator() {
                             onClick={() => setSelectedAgentId(isSelected ? null : visitor.id)}
                           />
                           
-                          {/* ID de l'agent sélectionné */}
+
                           {isSelected && (
                             <text 
                               x={visitor.x * 8 + 4} 
@@ -1997,7 +1878,7 @@ export default function ThemeParkSimulator() {
                       )
                     })}
 
-                    {/* Rendu des stats des attractions */}
+
                     {showStats &&
                       attractions.map((attraction) => (
                         <text
@@ -2018,9 +1899,9 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
               </CardContent>
             </Card>
 
-                        {/* Légende, Statistiques et Graphique */}
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {/* Légende */}
+
               <Card className="bg-white/80 backdrop-blur-md shadow-lg">
                 <CardHeader>
                   <CardTitle>Légende</CardTitle>
@@ -2063,44 +1944,11 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                     )}
                   </div>
                   
-                  {/* Debug colors
-                  <div className="border-t pt-2 mt-2">
-                    <h4 className="text-xs font-semibold text-gray-600 mb-2">Debug Visiteurs:</h4>
-                    <div className="grid grid-cols-2 gap-1 text-xs">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-green-600 rounded-full"></div>
-                        <span>En mouvement OK</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                        <span>Bloqué (pas chemin)</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-                        <span>Cherche attraction</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                        <span>Toutes visitées</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-pink-500 rounded-full"></div>
-                        <span>Bloqué longtemps</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-sky-500 rounded-full"></div>
-                        <span>En file</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-purple-600 rounded-full"></div>
-                        <span>En attraction</span>
-                      </div>
-                    </div>
-                  </div> */}
+
                 </CardContent>
               </Card>
 
-              {/* Statistiques */}
+
               <Card className="bg-white/80 backdrop-blur-md shadow-lg">
                 <CardHeader>
                   <CardTitle>Statistiques</CardTitle>
@@ -2140,7 +1988,7 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
               </Card>
             </div>
 
-            {/* Graphique */}
+
             <div className="mt-4">
               <Card className="bg-white/80 backdrop-blur-md shadow-lg">
                 <CardHeader>
@@ -2212,9 +2060,9 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
             </div>
           </div>
 
-          {/* Sélection et Détails Agent */}
+
           <div className="lg:col-span-1 space-y-4">
-            {/* Bouton sélection agent aléatoire */}
+
             <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
                 <CardTitle>Sélection Agent</CardTitle>
@@ -2226,7 +2074,6 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                       const randomVisitor = visitors[Math.floor(Math.random() * visitors.length)]
                       setSelectedAgentId(randomVisitor.id)
                       
-                      // Centrer automatiquement sur l'agent
                       setTimeout(() => {
                         const container = document.getElementById('park-container')
                         if (container) {
@@ -2259,7 +2106,7 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
               </CardContent>
             </Card>
 
-            {/* Détails Agent Sélectionné */}
+
             {selectedAgentId !== null && (() => {
               const selectedAgent = visitors.find(v => v.id === selectedAgentId)
               if (!selectedAgent) return null

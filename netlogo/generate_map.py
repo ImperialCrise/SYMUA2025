@@ -252,4 +252,3 @@ if __name__ == "__main__":
     export_to_txt(park, "park_ascii.txt")
     print(">> Done writing file", flush=True)
     print("DONE", flush=True)
-

@@ -1,4 +1,3 @@
-/** @type {import('next').NextConfig} */
 const nextConfig = {
   basePath: "/SYMUA2025",
   output: "export",
