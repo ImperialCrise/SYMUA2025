@@ -1496,8 +1496,8 @@ export default function ThemeParkSimulator() {
                           onValueChange={([value]) => {
                             setParams((prev) => ({ ...prev, width: value }))
                           }}
-                          min={30}
-                          max={100}
+                          min={10}
+                          max={200}
                           step={5}
                           className="mt-1"
                         />
@@ -1510,8 +1510,8 @@ export default function ThemeParkSimulator() {
                           onValueChange={([value]) => {
                             setParams((prev) => ({ ...prev, height: value }))
                           }}
-                          min={30}
-                          max={100}
+                          min={10}
+                          max={200}
                           step={5}
                           className="mt-1"
                         />
@@ -1525,7 +1525,7 @@ export default function ThemeParkSimulator() {
                             setParams((prev) => ({ ...prev, entries: value }))
                           }}
                           min={1}
-                          max={5}
+                          max={10}
                           step={1}
                           className="mt-1"
                         />
@@ -1538,8 +1538,8 @@ export default function ThemeParkSimulator() {
                           onValueChange={([value]) => {
                             setParams((prev) => ({ ...prev, numberOfNodes: value }))
                           }}
-                          min={100}
-                          max={800}
+                          min={50}
+                          max={1000}
                           step={50}
                           className="mt-1"
                         />
@@ -1553,7 +1553,7 @@ export default function ThemeParkSimulator() {
                             setParams((prev) => ({ ...prev, roadWidth: value }))
                           }}
                           min={1}
-                          max={4}
+                          max={5}
                           step={1}
                           className="mt-1"
                         />
@@ -1574,8 +1574,8 @@ export default function ThemeParkSimulator() {
                           onValueChange={([value]) => {
                             setParams((prev) => ({ ...prev, numberOfAttractions: value }))
                           }}
-                          min={5}
-                          max={40}
+                          min={1}
+                          max={50}
                           step={1}
                           className="mt-1"
                         />
@@ -1588,8 +1588,8 @@ export default function ThemeParkSimulator() {
                           onValueChange={([value]) => {
                             setParams((prev) => ({ ...prev, queueLength: value }))
                           }}
-                          min={3}
-                          max={8}
+                          min={1}
+                          max={20}
                           step={1}
                           className="mt-1"
                         />
@@ -1603,7 +1603,7 @@ export default function ThemeParkSimulator() {
                           value={[params.visitorsPerQueueCell]}
                           onValueChange={([value]) => setParams((prev) => ({ ...prev, visitorsPerQueueCell: value }))}
                           min={1}
-                          max={5}
+                          max={10}
                           step={1}
                           className="mt-1"
                         />
@@ -1622,9 +1622,9 @@ export default function ThemeParkSimulator() {
                         <Slider
                           value={[params.spawnRate]}
                           onValueChange={([value]) => setParams((prev) => ({ ...prev, spawnRate: value }))}
-                          min={0.05}
-                          max={0.5}
-                          step={0.05}
+                          min={0.01}
+                          max={1.0}
+                          step={0.01}
                           className="mt-1"
                         />
                       </div>
@@ -1635,7 +1635,7 @@ export default function ThemeParkSimulator() {
                           value={[params.speed]}
                           onValueChange={([value]) => setParams((prev) => ({ ...prev, speed: value }))}
                           min={1}
-                          max={150}
+                          max={200}
                           step={1}
                           className="mt-1"
                         />
@@ -1660,9 +1660,9 @@ export default function ThemeParkSimulator() {
                         <Slider
                           value={[params.initialSatisfaction]}
                           onValueChange={([value]) => setParams((prev) => ({ ...prev, initialSatisfaction: value }))}
-                          min={10}
-                          max={90}
-                          step={5}
+                          min={0}
+                          max={100}
+                          step={1}
                           className="mt-1"
                         />
                       </div>
@@ -1676,8 +1676,8 @@ export default function ThemeParkSimulator() {
                           onValueChange={([value]) =>
                             setParams((prev) => ({ ...prev, satisfactionGainPerAttraction: value }))
                           }
-                          min={5}
-                          max={30}
+                          min={0}
+                          max={50}
                           step={1}
                           className="mt-1"
                         />
@@ -1693,7 +1693,7 @@ export default function ThemeParkSimulator() {
                               setParams((prev) => ({ ...prev, satisfactionLossPerWaitTime: value }))
                             }
                             min={0.0}
-                            max={5.0}
+                            max={10.0}
                             step={0.1}
                             className="mt-1"
                           />
@@ -1705,8 +1705,8 @@ export default function ThemeParkSimulator() {
                           value={[params.satisfactionMin]}
                           onValueChange={([value]) => setParams((prev) => ({ ...prev, satisfactionMin: value }))}
                           min={0}
-                          max={50}
-                          step={5}
+                          max={100}
+                          step={1}
                           className="mt-1"
                         />
                       </div>
@@ -1716,9 +1716,9 @@ export default function ThemeParkSimulator() {
                           <Slider
                             value={[params.satisfactionMax]}
                             onValueChange={([value]) => setParams((prev) => ({ ...prev, satisfactionMax: value }))}
-                            min={50}
-                            max={190}
-                            step={5}
+                            min={0}
+                            max={100}
+                            step={1}
                             className="mt-1"
                           />
                         </div>
