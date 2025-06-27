@@ -949,7 +949,7 @@ export default function ThemeParkSimulator() {
               // CORRECTION: Vérifier STRICTEMENT la capacité ET la position dans la queue
               if (
                 ridingVisitors < currentAttraction.capacity &&
-                visitor.queuePosition === 0 &&
+                visitor.queuePosition === getQueueCellsForAttraction(currentAttraction.id).length - 1 &&// amogus
                 !attractionsAdmittedThisTick.has(currentAttraction.id) // Check if attraction already admitted someone this tick
               ) {
                 visitor.state = "riding"
