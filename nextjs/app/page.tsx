@@ -1284,7 +1284,8 @@ export default function ThemeParkSimulator() {
             satisfactionMax: params.satisfactionMax,
           },
         ]
-        return newHistory.slice(-100)
+        // return newHistory.slice(-100) // Removed to show all history
+        return newHistory
       })
 
       return remainingVisitors
