@@ -838,7 +838,11 @@ export default function ThemeParkSimulator() {
     const occupiedPositions = new Set<number>()
     allVisitors
       .filter(v => v.currentAttraction === attractionId && v.state === "inQueue")
-      .forEach(v => occupiedPositions.add(v.queuePosition))
+      .forEach(v => {
+        if (typeof v.queuePosition === 'number' && !isNaN(v.queuePosition) && v.queuePosition >= 0) {
+          occupiedPositions.add(v.queuePosition);
+        }
+      });
 
     // Trouver la première position libre (en partant de la fin de la queue)
     for (let position = queueCells.length - 1; position >= 0; position--) {
@@ -1176,30 +1180,19 @@ export default function ThemeParkSimulator() {
                         visitor.timeInTransit = 0;
                       }
                     } else {
-                      // Personne n'embarque, ou la file est vide et personne n'est en position 0
-                      // Tenter de prendre la prochaine place ou d'embarquer directement si params.boardingTime === 0
-                      const queuePosition = getNextQueuePosition(visitor.currentAttraction, prevVisitors);
-                      if (queuePosition) {
-                        // Si params.boardingTime > 0 OU si la position obtenue n'est pas 0, entrer en file normale
-                        // OU si la capacité est atteinte.
-                        // Essentiellement, on entre en file sauf si boardingTime est 0 ET la position est 0 ET il y a de la place.
-                        if (params.boardingTime > 0 || queuePosition.position !== 0 || ridingVisitors >= attraction.capacity || attractionsAdmittedThisTick.has(attraction.id)) {
-                           visitor.state = "inQueue";
-                           visitor.waitTime = 0;
-                           visitor.timeInTransit = 0;
-                           visitor.queuePosition = queuePosition.position;
-                           visitor.x = queuePosition.cell.x;
-                           visitor.y = queuePosition.cell.y;
-                        } else { // Cas spécial: boardingTime est 0, file vide (pos 0 dispo), et place dans l'attraction
-                           visitor.state = "riding";
-                           visitor.waitTime = 0;
-                           visitor.timeInTransit = 0;
-                           visitor.queuePosition = -1; // Pas en queue
-                           delete visitor.boardingTimeRemaining;
-                           attractionsAdmittedThisTick.add(attraction.id);
-                           visitor.x = attraction.x;
-                           visitor.y = attraction.y;
-                        }
+                      // Personne n'embarque, ou la file est vide et personne n'est en position 0.
+                      // L'agent doit tenter d'entrer dans la file.
+                      const queuePositionData = getNextQueuePosition(visitor.currentAttraction, prevVisitors);
+                      if (queuePositionData) {
+                        // TOUJOURS entrer en file d'abord si une place est trouvée.
+                        // La logique pour params.boardingTime === 0 (passage rapide à riding)
+                        // sera gérée dans l'état "inQueue" au tick suivant.
+                        visitor.state = "inQueue";
+                        visitor.waitTime = 0;
+                        visitor.timeInTransit = 0;
+                        visitor.queuePosition = queuePositionData.position;
+                        visitor.x = queuePositionData.cell.x;
+                        visitor.y = queuePositionData.cell.y;
                       } else {
                         // Queue pleine, chercher une autre attraction
                         visitor.currentAttraction = null;
