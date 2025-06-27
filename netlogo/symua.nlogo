@@ -16,15 +16,16 @@ people-own [
   dans-file?
   temps-attente
   duree-attraction
-  vitesse-agent
+  vitesse-agent ;; Vitesse individuelle de l'agent
   past-attractions
 ]
 
 attractions-own [
-
-
-
-
+  :; This class represents an attraction in the park and has the following fields
+  :;
+  :; - wait-time: The wait time per person in ticks (integer)
+  :; - tags: The tags of the attraction (list of string)
+  :; - capacity: The total capacity of the attraction
 
   wait-time
   tags
@@ -48,18 +49,18 @@ globals [
   exit-patches
   nb-total-entres
   nb-total-sortis
-  attraction_tags
+  attraction_tags ;;
   afficher-labels?
-
-
-
+  ; probabilite-spawn-groupe
+  ; vitesse-arrivee
+  ;; vitesse-depart ; Supprimé car la vitesse est maintenant gérée par l'agent
 ]
 
 
 to setup
   clear-all
 
-
+  ;; Set global variables
   set nb-total-entres 0
   set nb-total-sortis 0
   set attraction_tags ["RollerCoaster" "Famille" "Sensation" "Enfant" "Horreur" "Emre (oe c une attraction Emre)"]
@@ -68,7 +69,7 @@ to setup
 
   set probabilite-spawn-groupe 0.1
   set vitesse-arrivee 5
-
+  ;; set vitesse-depart 5 ; Supprimé
 
   if not is-number? nb-visiteurs [ set nb-visiteurs 50 ]
   if not is-number? capacite-queue [ set capacite-queue 10 ]
@@ -76,7 +77,7 @@ to setup
   if not is-number? vitesse [ set vitesse 10 ]
   if not is-number? probabilite-spawn-groupe [ set probabilite-spawn-groupe 0.1 ]
   if not is-number? vitesse-arrivee [ set vitesse-arrivee 5 ]
-
+  ;; if not is-number? vitesse-depart [ set vitesse-depart 5 ] ; Supprimé
   random-seed seed-random
   load-map
   reset-ticks
@@ -114,7 +115,7 @@ to load-map
             set type-patch "attraction"
             set id-attraction (word "attr-" x "-" y)
             set pcolor gray
-
+            ;; Spawn Attraction type agent
             spawn-attraction x y
           ]
         [ifelse c = "#" [
@@ -195,11 +196,11 @@ to spawn-people
             set size 1.2
             set past-attractions []
             set nb-total-entres nb-total-entres + 1
-
+            ;; Initialisation de la vitesse de l'agent
             ifelse en-famille [
-              set vitesse-agent (1 + random-float 1.0)
+              set vitesse-agent (1 + random-float 1.0) ;; Vitesse plus lente pour les familles (1.0 à 2.0)
             ] [
-              set vitesse-agent (2 + random-float 2.0)
+              set vitesse-agent (2 + random-float 2.0) ;; Vitesse plus rapide pour les personnes seules (2.0 à 4.0)
             ]
             choose-new-destination
           ]
@@ -242,7 +243,7 @@ to choose-new-destination
     ]
 
     if any? potential-attractions [
-
+      ;;calculate attractions score and sort by the score to get the best one
       let attraction-scores map [a -> list a (calculate-score a visitor)] sort potential-attractions
 
       let sorted-pairs sort-by [[a b] -> item 1 b > item 1 a] attraction-scores
@@ -338,12 +339,12 @@ to avancer-case
     stop
   ]
 
-
+  ;; Utilisation de la vitesse individuelle de l'agent pour le déplacement
   let steps-to-take floor(vitesse-agent)
   if steps-to-take < 1 [ set steps-to-take 1 ]
 
   repeat steps-to-take [
-    if empty? path [ stop ]
+    if empty? path [ stop ] ;; Arrête si le chemin est vide
 
     let next-patch item 0 path
     move-to next-patch
@@ -357,16 +358,16 @@ to avancer-case
         if [type-patch] of patch-here = "queue" [
           set dans-file? true
           set temps-attente 0
-          set path []
+          set path [] ;; Efface le chemin une fois arrivé à la file
         ]
       ]
-      stop
+      stop ;; Arrête le repeat si la destination est atteinte
     ]
   ]
 end
 
 to go
-  spawn-people
+  spawn-people ;; Ensure there's a chance to spawn new people each tick
   wait (1 / vitesse)
   ask people [
     ifelse not dans-file? [
@@ -468,7 +469,7 @@ to generate-new-map
   let queue queue-len
   let road road-width
 
-
+  ;; Construction manuelle de la commande
   let cmd (word "subprocess.run(["
   "'python', "
   "'generate_map.py', "
@@ -888,39 +889,39 @@ HORIZONTAL
 @#$#@#$#@
 ## WHAT IS IT?
 
-
+(a general understanding of what the model is trying to show or explain)
 
 ## HOW IT WORKS
 
-
+(what rules the agents use to create the overall behavior of the model)
 
 ## HOW TO USE IT
 
-
+(how to use the model, including a description of each of the items in the Interface tab)
 
 ## THINGS TO NOTICE
 
-
+(suggested things for the user to notice while running the model)
 
 ## THINGS TO TRY
 
-
+(suggested things for the user to try to do (move sliders, switches, etc.) with the model)
 
 ## EXTENDING THE MODEL
 
-
+(suggested things to add or change in the Code tab to make the model more complicated, detailed, accurate, etc.)
 
 ## NETLOGO FEATURES
 
-
+(interesting or unusual features of NetLogo that the model uses, particularly in the Code tab; or where workarounds were needed for missing features)
 
 ## RELATED MODELS
 
-
+(models in the NetLogo Models Library and elsewhere which are of related interest)
 
 ## CREDITS AND REFERENCES
 
-
+(a reference to the model's URL on the web if it has one, as well as any other necessary credits, citations, and links)
 @#$#@#$#@
 default
 true
