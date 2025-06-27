@@ -841,12 +841,7 @@ export default function ThemeParkSimulator() {
     // Trouver la première position libre (en partant de la fin de la queue)
     for (let position = queueCells.length - 1; position >= 0; position--) {
       if (!occupiedPositions.has(position)) {
-        // Corrected mapping:
-        // Logical position 0 (front) -> Physical cell queueCells[queueCells.length - 1]
-        // Logical position N-1 (back) -> Physical cell queueCells[0]
-        // Physical cell index is (queueCells.length - 1) - logicalPosition.
-        const physicalCellIndex = (queueCells.length - 1) - position;
-        return { position, cell: queueCells[physicalCellIndex] };
+        return { position, cell: queueCells[position] }
       }
     }
 
@@ -855,44 +850,20 @@ export default function ThemeParkSimulator() {
 
   // Faire avancer tous les visiteurs dans une queue
   const advanceQueueForAttraction = (attractionId: number, allVisitors: Visitor[]): void => {
-    const queueCells = getQueueCellsForAttraction(attractionId);
-    if (queueCells.length === 0) return;
-
-    let visitorsInThisQueue = allVisitors
+    const visitorsInQueue = allVisitors
       .filter(v => v.currentAttraction === attractionId && v.state === "inQueue")
-      .sort((a, b) => a.queuePosition - b.queuePosition); // Trier par position (0 = devant)
+      .sort((a, b) => a.queuePosition - b.queuePosition) // Trier par position (0 = devant)
 
-    // Check if position 0 is vacant and there are people in queue
-    const isPositionZeroOccupied = visitorsInThisQueue.some(v => v.queuePosition === 0);
-
-    if (!isPositionZeroOccupied && visitorsInThisQueue.length > 0) {
-      // Position 0 is free, advance everyone
-      visitorsInThisQueue.forEach(visitor => {
-        if (visitor.queuePosition > 0) { // Do not affect those already at -1 or somehow 0
-          visitor.queuePosition--;
-        }
-      });
-      // Re-sort after advancing
-      visitorsInThisQueue.sort((a, b) => a.queuePosition - b.queuePosition);
-    }
+    const queueCells = getQueueCellsForAttraction(attractionId)
     
-    // Mettre à jour les positions physiques selon la position dans la queue (LOGICAL)
-    visitorsInThisQueue.forEach(visitor => {
+    // Mettre à jour les positions physiques selon la position dans la queue
+    visitorsInQueue.forEach(visitor => {
       if (visitor.queuePosition >= 0 && visitor.queuePosition < queueCells.length) {
-        // Corrected mapping:
-        // Logical position 0 (front) -> Physical cell queueCells[queueCells.length - 1] (exit of queue)
-        // Logical position N-1 (back) -> Physical cell queueCells[0] (entry of queue)
-        const physicalCellIndex = (queueCells.length - 1) - visitor.queuePosition;
-
-        if (physicalCellIndex >= 0 && physicalCellIndex < queueCells.length) {
-          const targetCell = queueCells[physicalCellIndex];
-          visitor.x = targetCell.x;
-          visitor.y = targetCell.y;
-        } else {
-            console.error(`Error in advanceQueueForAttraction: Invalid targetCellIndex ${physicalCellIndex} for visitor ${visitor.id} with queuePosition ${visitor.queuePosition}. Attraction ${attractionId}, QueueCells Length: ${queueCells.length}`);
-        }
+        const targetCell = queueCells[visitor.queuePosition]
+        visitor.x = targetCell.x
+        visitor.y = targetCell.y
       }
-    });
+    })
   }
 
   // Mise à jour de la simulation
