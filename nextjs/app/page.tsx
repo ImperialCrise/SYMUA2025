@@ -351,31 +351,34 @@ export default function ThemeParkSimulator() {
 
         if (!valid) continue
 
-        const [startY, startX] = qCoords[0]
-        const adjacentToRoad = directions.some(([ady, adx]) => {
-          const checkY = startY + ady
-          const checkX = startX + adx
-          return checkY >= 0 && checkY < height && checkX >= 0 && checkX < width && grid[checkY][checkX] === ROAD
-        })
+        const [startY, startX] = qCoords[0]; // Entrée de la file
+        const roadCheckDirections: [number,number][] = [[-1,0], [1,0], [0,-1], [0,1]];
 
-        if (!adjacentToRoad) continue
+        const isEntryPointAdjacentToRoad = roadCheckDirections.some(([rdy, rdx]) => {
+            const checkY = startY + rdy;
+            const checkX = startX + rdx;
+            return checkY >= 0 && checkY < height && checkX >= 0 && checkX < width && grid[checkY][checkX] === ROAD;
+        });
 
-        let isolated = true
-        for (let i = 1; i < qCoords.length; i++) {
-          const [qy, qx] = qCoords[i]
-          if (
-            directions.some(([dy, dx]) => {
-              const checkY = qy + dy
-              const checkX = qx + dx
-              return checkY >= 0 && checkY < height && checkX >= 0 && checkX < width && grid[checkY][checkX] === ROAD
-            })
-          ) {
-            isolated = false
-            break
+        if (!isEntryPointAdjacentToRoad) continue; // L'entrée de la file DOIT être adjacente à une route
+
+        let isQueueIsolated = true;
+        // Vérifier l'isolement pour les segments de file qCoords[1] à qCoords[length - 2]
+        // qCoords[0] est l'entrée (connectée à la route), qCoords[length-1] est l'attraction.
+        for (let i = 1; i < qCoords.length - 1; i++) {
+          const [qy, qx] = qCoords[i];
+          if (roadCheckDirections.some(([rdy, rdx]) => {
+              const checkY = qy + rdy;
+              const checkX = qx + rdx;
+              return checkY >= 0 && checkY < height && checkX >= 0 && checkX < width && grid[checkY][checkX] === ROAD;
+          })) {
+            isQueueIsolated = false;
+            break;
           }
         }
-
-        if (!isolated) continue
+        // Une file de longueur 2 (entrée + attraction) est toujours "isolée" par cette définition.
+        // Pour les files plus longues, les segments intermédiaires ne doivent pas toucher de routes.
+        if (!isQueueIsolated && qCoords.length > 2) continue;
 
         const attractionPos = qCoords[qCoords.length - 1]
         if (attractions.some((pos) => distance(attractionPos, pos) < minDist)) {
