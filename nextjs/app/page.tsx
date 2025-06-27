@@ -79,6 +79,7 @@ export default function ThemeParkSimulator() {
   const [showStats, setShowStats] = useState(false)
   const [statsHistory, setStatsHistory] = useState<StatsHistory[]>([])
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null)
+  const [selectedAttractionId, setSelectedAttractionId] = useState<number | null>(null)
   const [stats, setStats] = useState({
     totalEntered: 0,
     totalExited: 0,
@@ -1432,6 +1433,9 @@ export default function ThemeParkSimulator() {
       case "entrance":
         return "#48bb78"
       case "attraction":
+        if (cell.attractionId !== undefined && cell.attractionId === selectedAttractionId) {
+          return "#00FFFF" // Cyan for selected attraction
+        }
         if (cell.attractionId !== undefined) {
           const attraction = attractions.find((a) => a.id === cell.attractionId)
           const visitorsInAttraction = visitors.filter(
@@ -1807,9 +1811,31 @@ export default function ThemeParkSimulator() {
                   <svg width={park[0]?.length * 8 || 0} height={park.length * 8}>
                     {/* Rendu du parc */}
                     {park.map((row, y) =>
-                      row.map((cell, x) => (
-                        <rect key={`${x}-${y}`} x={x * 8} y={y * 8} width={8} height={8} fill={getCellColor(cell, x, y)} />
-                      )),
+                      row.map((cell, x) => {
+                        const общегоColor = getCellColor(cell, x, y)
+                        if (cell.type === "attraction" && cell.attractionId !== undefined) {
+                          return (
+                            <rect
+                              key={`${x}-${y}`}
+                              x={x * 8}
+                              y={y * 8}
+                              width={8}
+                              height={8}
+                              fill={общегоColor}
+                              style={{ cursor: "pointer" }}
+                              onClick={() => {
+                                if (selectedAttractionId === cell.attractionId) {
+                                  setSelectedAttractionId(null) // Désélectionner si déjà sélectionnée
+                                } else {
+                                  setSelectedAttractionId(cell.attractionId)
+                                  setSelectedAgentId(null) // Désélectionner l'agent si une attraction est cliquée
+                                }
+                              }}
+                            />
+                          )
+                        }
+                        return <rect key={`${x}-${y}`} x={x * 8} y={y * 8} width={8} height={8} fill={общегоColor} />
+                      }),
                     )}
 
                     {/* Rendu des visiteurs */}
@@ -1865,7 +1891,14 @@ export default function ThemeParkSimulator() {
                             stroke={visitor.path.length > 0 ? "#ffffff" : "none"}
                             strokeWidth={isSelected ? 1 : 0.5}
                             style={{ cursor: 'pointer' }}
-                            onClick={() => setSelectedAgentId(isSelected ? null : visitor.id)}
+                            onClick={() => {
+                              if (isSelected) {
+                                setSelectedAgentId(null)
+                              } else {
+                                setSelectedAgentId(visitor.id)
+                                setSelectedAttractionId(null) // Désélectionner l'attraction si un agent est cliqué
+                              }
+                            }}
                           />
                           
                           {/* ID de l'agent sélectionné */}
@@ -1953,6 +1986,12 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 border-2 border-yellow-400 rounded-full"></div>
                         <span className="text-xs">Agent #{selectedAgentId} sélectionné</span>
+                      </div>
+                    )}
+                    {selectedAttractionId !== null && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="w-3 h-3 bg-cyan-400 border border-cyan-600 rounded"></div>
+                        <span className="text-xs">Attraction #{selectedAttractionId} sélectionnée</span>
                       </div>
                     )}
                   </div>
@@ -2106,12 +2145,12 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
             </div>
           </div>
 
-          {/* Sélection et Détails Agent */}
+          {/* Sélection et Détails Agent / Attraction */}
           <div className="lg:col-span-1 space-y-4">
-            {/* Bouton sélection agent aléatoire */}
+            {/* Boutons de sélection */}
             <Card className="bg-white/80 backdrop-blur-md shadow-lg">
               <CardHeader>
-                <CardTitle>Sélection Agent</CardTitle>
+                <CardTitle>Sélection</CardTitle>
               </CardHeader>
               <CardContent>
                 <Button 
@@ -2138,16 +2177,48 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                   className="w-full"
                   disabled={visitors.length === 0}
                 >
-                  Sélectionner un Agent Aléatoire
+                  Agent Aléatoire
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    if (attractions.length > 0) {
+                      const randomAttraction = attractions[Math.floor(Math.random() * attractions.length)]
+                      setSelectedAttractionId(randomAttraction.id)
+                      setSelectedAgentId(null) // Désélectionner l'agent
+
+                      // Centrer automatiquement sur l'attraction
+                      setTimeout(() => {
+                        const container = document.getElementById('park-container')
+                        if (container) {
+                          const attractionX = randomAttraction.x * 8
+                          const attractionY = randomAttraction.y * 8
+                          container.scrollTo({
+                            left: attractionX - container.clientWidth / 2,
+                            top: attractionY - container.clientHeight / 2,
+                            behavior: 'smooth'
+                          })
+                        }
+                      }, 100)
+                    }
+                  }}
+                  className="w-full mt-2"
+                  disabled={attractions.length === 0}
+                  variant="secondary"
+                >
+                  Attraction Aléatoire
                 </Button>
                 
-                {selectedAgentId !== null && (
+                {(selectedAgentId !== null || selectedAttractionId !== null) && (
                   <Button 
-                    onClick={() => setSelectedAgentId(null)}
+                    onClick={() => {
+                      setSelectedAgentId(null)
+                      setSelectedAttractionId(null)
+                    }}
                     variant="outline"
                     className="w-full mt-2"
                   >
-                    ❌ Désélectionner
+                    ❌ Tout Désélectionner
                   </Button>
                 )}
               </CardContent>
@@ -2243,6 +2314,67 @@ Temps: ${attraction.averageRemainingTime.toFixed(1)}`}
                         </div>
                       </div>
                     )}
+                  </CardContent>
+                </Card>
+              )
+            })()}
+
+            {/* Détails Attraction Sélectionnée */}
+            {selectedAttractionId !== null && (() => {
+              const selectedAttraction = attractions.find(a => a.id === selectedAttractionId)
+              if (!selectedAttraction) return null
+
+              return (
+                <Card className="bg-cyan-50/90 backdrop-blur-md shadow-lg border-cyan-300">
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span className="text-cyan-800">Attraction #{selectedAttraction.id}</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          const container = document.getElementById('park-container')
+                          if (container) {
+                            const attractionX = selectedAttraction.x * 8
+                            const attractionY = selectedAttraction.y * 8
+                            container.scrollTo({
+                              left: attractionX - container.clientWidth / 2,
+                              top: attractionY - container.clientHeight / 2,
+                              behavior: 'smooth'
+                            })
+                          }
+                        }}
+                        className="text-cyan-600 hover:text-cyan-800"
+                        title="Centrer sur l'attraction"
+                      >
+                        {/* Placeholder for a target icon if you have one */}
+                        🎯
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    <div className="grid grid-cols-1 gap-2">
+                      <div>
+                        <strong>Position:</strong> ({selectedAttraction.x}, {selectedAttraction.y})
+                      </div>
+                      <div>
+                        <strong>Tags:</strong> <Badge variant="outline">{selectedAttraction.tags.join(", ")}</Badge>
+                      </div>
+                      <div>
+                        <strong>Capacité:</strong> {selectedAttraction.capacity}
+                      </div>
+                      <div>
+                        <strong>Popularité:</strong> {selectedAttraction.popularity.toFixed(1)}
+                      </div>
+                    </div>
+
+                    <div className="border-t pt-2">
+                      <div><strong>Temps d'attente estimé:</strong> {selectedAttraction.waitTime.toFixed(0)} ticks</div>
+                      <div><strong>Visiteurs à l'intérieur:</strong> {selectedAttraction.visitorsInside}</div>
+                      <div><strong>Visiteurs en file:</strong> {selectedAttraction.visitorsInQueue}</div>
+                      <div><strong>Taux d'occupation:</strong> {selectedAttraction.occupancyRate.toFixed(1)}%</div>
+                      <div><strong>Temps moyen restant (ride):</strong> {selectedAttraction.averageRemainingTime.toFixed(1)} ticks</div>
+                    </div>
                   </CardContent>
                 </Card>
               )
