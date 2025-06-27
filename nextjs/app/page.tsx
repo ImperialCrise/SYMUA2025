@@ -849,12 +849,12 @@ export default function ThemeParkSimulator() {
         }
       });
 
-    // Trouver la première position libre (en partant de la fin de la queue)
-    for (let position = queueCells.length - 1; position >= 0; position--) {
-      if (!occupiedPositions.has(position)) {
-        return { position, cell: queueCells[position] }
+      // Trouver la première position libre en partant du début
+      for (let position = 0; position < queueCells.length; position++) {
+        if (!occupiedPositions.has(position)) {
+          return { position, cell: queueCells[position] }
+        }
       }
-    }
 
     return null // Queue pleine
   }
