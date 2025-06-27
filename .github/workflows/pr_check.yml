@@ -38,4 +38,4 @@ jobs:
         run: cd ./nextjs/ && npm install --legacy-peer-deps
 
       - name: Typecheck with Next.js 🧐
-        run: cd ./nextjs/ && npx next tsc --noEmit
+        run: cd ./nextjs/ && npx next tsc

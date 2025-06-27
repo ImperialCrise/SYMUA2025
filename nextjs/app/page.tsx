@@ -305,28 +305,19 @@ export default function ThemeParkSimulator() {
     }
   }
 
-  // Define the new return type for addAttractionsAndQueues
-  interface PlacedAttractionInfo {
-    id: number;
-    pos: [number, number]; // Attraction's [y, x] coordinates
-    queueCellCoords: Array<[number, number]>; // List of [y,x] for actual queue cells
-  }
-
   const addAttractionsAndQueues = (
     grid: string[][],
     nbAttraction = 20,
     queueLength = 4,
     minDist = 5,
-    startAttractionId = 0, // Added to allow sequential ID generation
-  ): PlacedAttractionInfo[] => {
+  ): [number, number][] => {
     const height = grid.length
     const width = grid[0].length
-    const placedAttractions: PlacedAttractionInfo[] = []
-    let currentAttractionId = startAttractionId
+    const attractions: [number, number][] = []
     let attempts = 0
     const maxAttempts = 1000
 
-    while (placedAttractions.length < nbAttraction && attempts < maxAttempts) {
+    while (attractions.length < nbAttraction && attempts < maxAttempts) {
       const y = Math.floor(Math.random() * (height - 8)) + 3
       const x = Math.floor(Math.random() * (width - 8)) + 3
       const directions: [number, number][] = [
@@ -385,32 +376,21 @@ export default function ThemeParkSimulator() {
         if (!isolated) continue
 
         const attractionPos = qCoords[qCoords.length - 1]
-        // Check distance against already placed attractions' positions
-        if (placedAttractions.some((pa) => distance(attractionPos, pa.pos) < minDist)) {
+        if (attractions.some((pos) => distance(attractionPos, pos) < minDist)) {
           continue
         }
 
-        const actualQueueCells: Array<[number, number]> = []
-        for (let i = 0; i < qCoords.length - 1; i++) { // All except the last one which is the attraction
-          const [qy, qx] = qCoords[i]
+        for (const [qy, qx] of qCoords) {
           grid[qy][qx] = QUEUE
-          actualQueueCells.push([qy, qx])
         }
-
         const [ay, ax] = attractionPos
-        grid[ay][ax] = ATTRACTIONS[placedAttractions.length % ATTRACTIONS.length] // Use 'A' for attraction cell
-
-        placedAttractions.push({
-          id: currentAttractionId,
-          pos: [ay, ax],
-          queueCellCoords: actualQueueCells,
-        })
-        currentAttractionId++
-        break // Found a spot for this attraction, move to the next one
+        grid[ay][ax] = ATTRACTIONS[attractions.length % ATTRACTIONS.length]
+        attractions.push([ay, ax])
+        break
       }
       attempts++
     }
-    return placedAttractions
+    return attractions
   }
 
   const fixRoadGaps = (grid: string[][]): number => {
@@ -479,7 +459,7 @@ export default function ThemeParkSimulator() {
     roadWidth = 2,
     queueLength = 5,
     attractionsCount = 20,
-  ): { grid: string[][]; attractionDetails: PlacedAttractionInfo[] } => {
+  ): string[][] => {
     const grid = generateEmptyMap(width, height, 3)
     const entriesPos = placeMultipleEntries(grid, entries)
     const internalNodes: [number, number][] = []
@@ -493,27 +473,17 @@ export default function ThemeParkSimulator() {
     const allNodes = [...entriesPos, ...internalNodes]
     addPaths(grid, allNodes, roadWidth)
     connectNearbyRoads(grid, 8, roadWidth)
-    // Call addAttractionsAndQueues, passing 0 as the startAttractionId
-    const attractionDetails = addAttractionsAndQueues(
-      grid,
-      attractionsCount,
-      queueLength,
-      6, // minDist
-      0  // startAttractionId
-    )
+    addAttractionsAndQueues(grid, attractionsCount, queueLength, 6)
 
     while (fixRoadGaps(grid) > 0) {
       // Continue fixing gaps
     }
 
-    return { grid, attractionDetails }
+    return grid
   }
 
   // Conversion de la grille Python vers notre format
-  const convertPythonGridToPark = (
-    pythonGrid: string[][], // This is the grid with 'A', '#', '.' symbols
-    placedAttractionsDetails: PlacedAttractionInfo[],
-  ): { park: ParkCell[][]; attractions: Attraction[] } => {
+  const convertPythonGridToPark = (pythonGrid: string[][]): { park: ParkCell[][]; attractions: Attraction[] } => {
     const height = pythonGrid.length
     const width = pythonGrid[0].length
     const newPark: ParkCell[][] = Array(height)
@@ -524,67 +494,66 @@ export default function ThemeParkSimulator() {
           .map(() => ({ type: "empty" as const })),
       )
     const newAttractions: Attraction[] = []
+    let attractionId = 0
 
-    // Create a map for quick lookup of attractionId by queue cell coordinates
-    // And populate newAttractions list from placedAttractionsDetails
-    const queueCellToAttractionIdMap = new Map<string, number>()
-    for (const attractionDetail of placedAttractionsDetails) {
-      for (const qcCoord of attractionDetail.queueCellCoords) {
-        queueCellToAttractionIdMap.set(`${qcCoord[0]},${qcCoord[1]}`, attractionDetail.id)
-      }
-      newAttractions.push({
-        id: attractionDetail.id,
-        x: attractionDetail.pos[1], // pos is [y,x]
-        y: attractionDetail.pos[0],
-        waitTime: Math.floor(Math.random() * 15) + 10,
-        tags: [ATTRACTION_TAGS[Math.floor(Math.random() * ATTRACTION_TAGS.length)]],
-        capacity: Math.floor(Math.random() * 30) + 20,
-        popularity: Math.random() * 10,
-        visitorsInside: 0,
-        visitorsInQueue: 0,
-        occupancyRate: 0,
-        averageRemainingTime: 0,
-      })
-    }
-    // Sort by ID just in case, though they should be in order from addAttractionsAndQueues
-    newAttractions.sort((a,b) => a.id - b.id);
-
-    // The old `attractionPositions` map and `attractionId` counter are no longer needed here.
+    // Map pour associer les positions d'attractions aux IDs
+    const attractionPositions = new Map<string, number>()
 
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
-        const cellSymbol = pythonGrid[y][x] // The symbol from the raw grid ('A', '#', '.', etc.)
-
-        // Determine if the current cell (y,x) is an attraction based on placedAttractionsDetails
-        const attractionDetailForCell = placedAttractionsDetails.find(
-          (att) => att.pos[0] === y && att.pos[1] === x,
-        )
-
-        if (attractionDetailForCell) {
-          newPark[y][x] = { type: "attraction", attractionId: attractionDetailForCell.id }
-        } else {
-          // If not an attraction, check if it's a queue cell using our map
-          const queueAttractionId = queueCellToAttractionIdMap.get(`${y},${x}`)
-          if (queueAttractionId !== undefined) {
-            newPark[y][x] = { type: "queue", attractionId: queueAttractionId }
-          } else {
-            // If not an attraction or a mapped queue cell, handle based on pythonGrid symbol
-            switch (cellSymbol) {
-              case WALL:
-                newPark[y][x] = { type: "wall" }
-                break
-              case ROAD:
-                newPark[y][x] = { type: "road" }
-                break
-              case ENTRANCE:
-                newPark[y][x] = { type: "entrance" }
-                break
-              // 'A' and '#' are implicitly handled by the logic above if they match placed details.
-              // If pythonGrid has an 'A' or '#' not in placedAttractionsDetails, it will become 'empty'.
-              default:
-                newPark[y][x] = { type: "empty" }
+        const cell = pythonGrid[y][x]
+        switch (cell) {
+          case WALL:
+            newPark[y][x] = { type: "wall" }
+            break
+          case ROAD:
+            newPark[y][x] = { type: "road" }
+            break
+          case ENTRANCE:
+            newPark[y][x] = { type: "entrance" }
+            break
+          case "A":
+            newPark[y][x] = { type: "attraction", attractionId }
+            attractionPositions.set(`${y},${x}`, attractionId)
+            newAttractions.push({
+              id: attractionId,
+              x,
+              y,
+              waitTime: Math.floor(Math.random() * 15) + 10,
+              tags: [ATTRACTION_TAGS[Math.floor(Math.random() * ATTRACTION_TAGS.length)]],
+              capacity: Math.floor(Math.random() * 30) + 20,
+              popularity: Math.random() * 10,
+              visitorsInside: 0,
+              visitorsInQueue: 0,
+              occupancyRate: 0,
+              averageRemainingTime: 0,
+            })
+            attractionId++
+            break
+          case QUEUE:
+            // Trouver l'attraction associée à cette queue
+            let queueAttractionId = -1
+            const directions = [
+              [-1, 0],
+              [1, 0],
+              [0, -1],
+              [0, 1],
+            ]
+            for (const [dy, dx] of directions) {
+              const ny = y + dy
+              const nx = x + dx
+              if (ny >= 0 && ny < height && nx >= 0 && nx < width && pythonGrid[ny][nx] === "A") {
+                const key = `${ny},${nx}`
+                if (attractionPositions.has(key)) {
+                  queueAttractionId = attractionPositions.get(key)!
+                  break
+                }
+              }
             }
-          }
+            newPark[y][x] = { type: "queue", attractionId: queueAttractionId >= 0 ? queueAttractionId : undefined }
+            break
+          default:
+            newPark[y][x] = { type: "empty" }
         }
       }
     }
@@ -596,8 +565,7 @@ export default function ThemeParkSimulator() {
   const generatePark = () => {
     const { width, height, entries, numberOfNodes, roadWidth, queueLength, numberOfAttractions } = params
 
-    // generateThemePark now returns an object { grid: string[][], attractionDetails: PlacedAttractionInfo[] }
-    const themeParkData = generateThemePark(
+    const pythonGrid = generateThemePark(
       width,
       height,
       entries,
@@ -607,11 +575,7 @@ export default function ThemeParkSimulator() {
       numberOfAttractions,
     )
 
-    // Pass both the grid and the attractionDetails to convertPythonGridToPark
-    const { park: newPark, attractions: newAttractions } = convertPythonGridToPark(
-      themeParkData.grid,
-      themeParkData.attractionDetails,
-    )
+    const { park: newPark, attractions: newAttractions } = convertPythonGridToPark(pythonGrid)
 
     setPark(newPark)
     setAttractions(newAttractions)
