@@ -28,6 +28,7 @@ interface Visitor {
   attractionsVisited: number
   timeInTransit: number
   queuePosition: number // Position dans la queue (0 = plus proche de l'attraction)
+  boardingTimeRemaining?: number // Temps d'attente en tête de file avant de monter
 }
 
 interface Attraction {
@@ -944,28 +945,35 @@ export default function ThemeParkSimulator() {
             if (currentAttraction) {
               const ridingVisitors = prevVisitors.filter(
                 (v: Visitor) => v.currentAttraction === currentAttraction.id && v.state === "riding"
-            ).length
+              ).length
 
-              // CORRECTION: Vérifier STRICTEMENT la capacité ET la position dans la queue
-              if (
-                ridingVisitors < currentAttraction.capacity &&
-                visitor.queuePosition === 0 &&
-                !attractionsAdmittedThisTick.has(currentAttraction.id) // Check if attraction already admitted someone this tick
-              ) {
-                visitor.state = "riding"
-                visitor.waitTime = 0
-                visitor.queuePosition = -1 // Plus en queue
+              if (visitor.queuePosition === 0) {
+                // Agent est en tête de file
+                if (visitor.boardingTimeRemaining === undefined) {
+                  // Initialiser le temps d'attente en tête de file
+                  visitor.boardingTimeRemaining = 15 // Valeur fixe de 15 ticks
+                }
 
-                // Mark that this attraction has admitted someone this tick
-                attractionsAdmittedThisTick.add(currentAttraction.id);
-                
-                // Téléporter le visiteur vers l'attraction
-                visitor.x = currentAttraction.x
-                visitor.y = currentAttraction.y
-                
-                // The `advanceQueueForAttraction` function, called after the main visitor update loop,
-                // will handle advancing other visitors in the queue.
+                if (visitor.boardingTimeRemaining > 0) {
+                  visitor.boardingTimeRemaining--
+                } else {
+                  // Temps d'attente en tête de file terminé, vérifier si peut monter
+                  if (
+                    ridingVisitors < currentAttraction.capacity &&
+                    !attractionsAdmittedThisTick.has(currentAttraction.id)
+                  ) {
+                    visitor.state = "riding"
+                    visitor.waitTime = 0
+                    visitor.queuePosition = -1 // Plus en queue
+                    delete visitor.boardingTimeRemaining // Nettoyer le champ
+                    attractionsAdmittedThisTick.add(currentAttraction.id)
+                    visitor.x = currentAttraction.x
+                    visitor.y = currentAttraction.y
+                  }
+                }
               }
+              // Si l'agent n'est pas en tête de file, il attend simplement.
+              // advanceQueueForAttraction s'occupera de le faire avancer si une place se libère devant.
             }
             break
 
