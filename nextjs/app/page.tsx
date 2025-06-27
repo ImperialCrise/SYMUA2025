@@ -868,6 +868,8 @@ export default function ThemeParkSimulator() {
 
   // Mise à jour de la simulation
   const updateSimulation = () => {
+    const attractionsAdmittedThisTick = new Set<number>(); // Track admissions per tick
+
     setVisitors((prevVisitors) => {
       // Première passe : supprimer immédiatement les visiteurs en leaving qui sont sur une entrée
       let filteredVisitors = prevVisitors.filter((visitor) => {
@@ -945,23 +947,24 @@ export default function ThemeParkSimulator() {
             ).length
 
               // CORRECTION: Vérifier STRICTEMENT la capacité ET la position dans la queue
-              if (ridingVisitors < currentAttraction.capacity && visitor.queuePosition === 0) {
+              if (
+                ridingVisitors < currentAttraction.capacity &&
+                visitor.queuePosition === 0 &&
+                !attractionsAdmittedThisTick.has(currentAttraction.id) // Check if attraction already admitted someone this tick
+              ) {
                 visitor.state = "riding"
-              visitor.waitTime = 0
+                visitor.waitTime = 0
                 visitor.queuePosition = -1 // Plus en queue
+
+                // Mark that this attraction has admitted someone this tick
+                attractionsAdmittedThisTick.add(currentAttraction.id);
                 
                 // Téléporter le visiteur vers l'attraction
                 visitor.x = currentAttraction.x
                 visitor.y = currentAttraction.y
                 
-                // Faire avancer tous les autres visiteurs dans cette queue
-                prevVisitors
-                  .filter(v => v.currentAttraction === currentAttraction.id && v.state === "inQueue" && v.id !== visitor.id)
-                  .forEach(v => {
-                    if (v.queuePosition > 0) {
-                      v.queuePosition-- // Avancer d'une position
-                    }
-                  })
+                // The `advanceQueueForAttraction` function, called after the main visitor update loop,
+                // will handle advancing other visitors in the queue.
               }
             }
             break
