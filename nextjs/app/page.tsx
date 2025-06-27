@@ -107,6 +107,7 @@ export default function ThemeParkSimulator() {
     satisfactionMax: 90, // Nouveau paramètre - seuil maximum
     visitorsPerQueueCell: 2, // Nouveau paramètre
     satisfactionEnabled: true, // Nouveau paramètre
+    boardingTime: 15, // Temps d'attente en tête de file avant de monter
   })
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
@@ -951,7 +952,7 @@ export default function ThemeParkSimulator() {
                 // Agent est en tête de file
                 if (visitor.boardingTimeRemaining === undefined) {
                   // Initialiser le temps d'attente en tête de file
-                  visitor.boardingTimeRemaining = 15 // Valeur fixe de 15 ticks
+                  visitor.boardingTimeRemaining = params.boardingTime // Utiliser le paramètre configurable
                 }
 
                 if (visitor.boardingTimeRemaining > 0) {
@@ -1511,6 +1512,22 @@ export default function ThemeParkSimulator() {
                           min={10}
                           max={200}
                           step={5}
+                          className="mt-1"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-sm font-medium">
+                          Temps d'embarquement (ticks): {params.boardingTime}
+                        </label>
+                        <Slider
+                          value={[params.boardingTime]}
+                          onValueChange={([value]) => {
+                            setParams((prev) => ({ ...prev, boardingTime: value }))
+                          }}
+                          min={0}
+                          max={60} // Permet jusqu'à 60 ticks, ajustable si besoin
+                          step={1}
                           className="mt-1"
                         />
                       </div>
