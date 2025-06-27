@@ -1,0 +1,41 @@
+name: PR Check
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ⚙️
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies 🔧
+        shell: bash
+        run: cd ./nextjs/ && npm install --legacy-peer-deps
+
+      - name: Build with Next.js 🏗️
+        run: cd ./nextjs/ && npx next build
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout 🛎️
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ⚙️
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies 🔧
+        shell: bash
+        run: cd ./nextjs/ && npm install --legacy-peer-deps
+
+      - name: Typecheck with Next.js 🧐
+        run: cd ./nextjs/ && npx next tsc --noEmit
