@@ -217,10 +217,10 @@ to-report calculate-score [a v]
     set dist distance v
   ]
   let w-popularity 0.2
-  let w-nb-done 4
-  let w-dist 0.3
-  let w-nb-en-file 0.5
-  let score (w-popularity * [popularite] of a) + (w-nb-done * nb-done) + (w-dist * dist) + (w-nb-en-file * [visiteurs-en-queue] of a)
+  let w-nb-done 10
+  let w-dist 0.5
+  let w-nb-en-file 1
+  let score (w-popularity * [popularite] of a) - (w-nb-done * nb-done) - (w-dist * dist) - (w-nb-en-file * [visiteurs-en-queue] of a)
   report score
 end
 
@@ -487,7 +487,6 @@ to generate-new-map
   print cmd
   load-map
 end
-
 
 
 
